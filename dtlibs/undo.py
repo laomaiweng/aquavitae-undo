@@ -95,7 +95,7 @@ command safely.
 [3, 6]
 
 A series of commands may be grouped within a function using the
-stack().group() context manager.
+group() context manager.
 
 >>> @command('Add 1 item'):
 ... def add(state, seq, item):
@@ -106,7 +106,7 @@ stack().group() context manager.
 ...     state['seq'].pop()
 ...
 >>> def addmany(seq, items, state):
-...     with stack().group('Add many'):
+...     with group('Add many'):
 ...         for item in items:
 ...         seq.append(item)
 >>> seq = []
@@ -161,8 +161,7 @@ class Action:
         args = (self.state,) + self.state['__args__'] 
         if self.instance is not None:
             args = (self.instance,) + args
-        print(args)
-        self.functions['do'](*args, **self.state['__kwargs__'])
+        return self.functions['do'](*args, **self.state['__kwargs__'])
 
     def undo(self):
         ''' Call the _undo command. '''
@@ -295,6 +294,14 @@ class stack:
     def redo_count(self):
         return len(self._undos)
 
+    def undo_text(self):
+        if self.can_undo():
+            return ('Undo ' + self._undos[-1].text()).strip()
+    
+    def redo_text(self):
+        if self.can_redo():
+            return ('Redo ' + self._redos[-1].text()).strip()
+    
     def __len__(self):
         return self.undo_count()
 

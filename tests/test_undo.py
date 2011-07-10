@@ -22,6 +22,8 @@ import unittest
 from imp import reload
 from flexmock import flexmock_pytest as flexmock
 
+from collections import deque
+
 from dtlibs import undo
 
 class TestCase(unittest.TestCase):
@@ -29,22 +31,22 @@ class TestCase(unittest.TestCase):
     def tearDown(self):
         reload(undo)
 
-class TestBasic:
+class TestBasic(TestCase):
 
     def test(self):
-        @undo.command('Add {pos}')
+        @undo.command('Add pos {pos}')
         def add(state, seq, item):
             seq.append(item)
             state['seq'] = seq
             state['pos'] = len(seq) - 1
         @add.undo
         def add(state):
-            seq, pos = state
+            seq, pos = state['seq'], state['pos']
             del seq[pos]
         sequence = [1, 2, 3, 4]
         add(sequence, 5)
         self.assertEqual(sequence, [1, 2, 3, 4, 5])
-        self.assertEqual(undo.stack().undotext(), 'Undo Add 5')
+        self.assertEqual(undo.stack().undo_text(), 'Undo Add pos 4')
         undo.stack().undo()
         self.assertEqual(sequence, [1, 2, 3, 4])
         undo.stack().redo()
@@ -151,3 +153,94 @@ class TestBound(unittest.TestCase):
         self.assertEqual(l._l, [5])
         undo.stack().undo()
         self.assertEqual(l._l, [])
+
+
+class Action(TestCase):
+    
+    def test__init__(self):
+        'Make sure values are stored correctly.'
+        a = undo.Action('instance', 'args', 'kwargs')
+        self.assertEqual(a.instance, 'instance')
+        self.assertEqual(a.state, {'__args__': 'args', '__kwargs__': 'kwargs'})
+        
+    def test_do_bound(self):
+        state = {'__args__': ('args',), '__kwargs__': {'key': 'value'}}
+        def do(*args, **kwargs):
+            self.assertEqual(args, ('instance', state, 'args'))
+            self.assertEqual(kwargs, {'key': 'value'})
+            return 'return'
+        a = undo.Action('instance', ('args',), {'key': 'value'})
+        a.state = state
+        a.functions['do'] = do 
+        self.assertEqual(a.do(), 'return')
+        
+    def test_do_unbound(self):
+        state = {'__args__': ('args',), '__kwargs__': {'key': 'value'}}
+        def do(*args, **kwargs):
+            self.assertEqual(args, (state, 'args'))
+            self.assertEqual(kwargs, {'key': 'value'})
+            return 'return'
+        a = undo.Action(None, ('args',), {'key': 'value'})
+        a.state = state
+        a.functions['do'] = do 
+        self.assertEqual(a.do(), 'return')
+        
+    def test_undo(self):
+        def f_undo(*args):
+            self.assertEqual(args, ('instance', 'state',))
+        a = undo.Action('instance', None, None)
+        a.state = 'state'
+        a.functions['undo'] = f_undo 
+        a.undo()
+
+    def test_text(self):
+        a = undo.Action(None, None, None)
+        a._desc = '{p1}, {p2}'
+        a.state = {'p1': 42, 'p2': 'a string'}
+        self.assertEqual(a.text(), '42, a string')
+        
+class Stack(TestCase):
+    
+    def test_API(self):
+        ' stack() should support all these functions. '
+        s = undo.stack()
+        s.undo()
+        s.redo()
+        s.undo_text()
+        s.redo_text()
+        s.undo_count()
+        s.redo_count()
+        s.can_undo()
+        s.can_redo()
+        s.append('item')
+           
+    def test_undo(self):
+        s = undo.stack()
+        act1 = flexmock().should_receive('undo').mock
+        act2 = flexmock().should_receive('undo').mock
+        act3 = flexmock().should_receive('undo').mock
+        s._undos = deque([act1, act2, act3])
+        s.undo()
+        self.assertEqual(s._undos, deque([act1, act2]))
+        self.assertEqual(s._redos, deque([act3]))
+        
+    def test_redo(self):
+        s = undo.stack()
+        act1 = flexmock().should_receive('do').mock
+        act2 = flexmock().should_receive('do').mock
+        act3 = flexmock().should_receive('do').mock
+        s._redos = deque([act1, act2, act3])
+        s.redo()
+        self.assertEqual(s._redos, deque([act1, act2]))
+        self.assertEqual(s._undos, deque([act3]))
+        
+    def test_undo_text(self):
+        act = flexmock().should_receive('text').and_return('some text').mock
+        undo.stack()._undos = deque([act])
+        self.assertEqual(undo.stack().undo_text(), 'Undo some text')
+    
+    def test_undo_text_blank(self):
+        act = flexmock().should_receive('text').and_return('').mock
+        undo.stack()._undos = [act]
+        self.assertEqual(undo.stack().undo_text(), 'Undo')
+        
