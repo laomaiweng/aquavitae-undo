@@ -244,3 +244,51 @@ class Stack(TestCase):
         undo.stack()._undos = [act]
         self.assertEqual(undo.stack().undo_text(), 'Undo')
         
+class Group(TestCase):
+    
+    def test_context(self):
+        'Make sure group works correctly as a context manager'
+        stack = []
+        flexmock(undo.stack()).should_receive('set_receiver').with_args(stack).ordered
+        flexmock(undo.stack()).should_receive('reset_receiver').ordered
+        g = undo.group('')
+        with g:
+            pass
+        self.assertEqual(undo.stack()._undos, deque([g]))
+        
+    def test_stack(self):
+        'Test that commands are passed to the group and not the main stack.'
+        g = undo.group('')
+        with g:
+            undo.stack().append('command1')
+            self.assertEqual(undo.stack()._undos, deque())
+            self.assertEqual(g._stack, ['command1'])
+        self.assertEqual(undo.stack()._undos, deque([g]))
+        
+    def setup_actions(self):
+        self.calls = []
+        self.g = undo.group('')
+        com1 = flexmock()
+        com2 = flexmock()
+        com3 = flexmock()
+        com1.should_receive('undo').replace_with(lambda: self.calls.append('com1')).mock
+        com2.should_receive('undo').replace_with(lambda: self.calls.append('com2')).mock
+        com3.should_receive('undo').replace_with(lambda: self.calls.append('com3')).mock
+        com1.should_receive('do').replace_with(lambda: self.calls.append('com1')).mock
+        com2.should_receive('do').replace_with(lambda: self.calls.append('com2')).mock
+        com3.should_receive('do').replace_with(lambda: self.calls.append('com3')).mock
+        self.g._stack.append(com1)
+        self.g._stack.append(com2)
+        self.g._stack.append(com3)
+        
+    def test_do(self):
+        'Test that undone actions can be redone in order'
+        self.setup_actions()
+        self.g.do()
+        self.assertEqual(self.calls, ['com1', 'com2', 'com3'])
+        
+    def test_undo(self):
+        'Test that undone actions can be redone in order'
+        self.setup_actions()
+        self.g.undo()
+        self.assertEqual(self.calls, ['com3', 'com2', 'com1'])

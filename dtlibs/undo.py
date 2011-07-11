@@ -224,7 +224,7 @@ class group:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            stack().reset_receiver
+            stack().reset_receiver()
             stack().append(self)
         return False
 
@@ -232,7 +232,7 @@ class group:
         for command in reversed(self._stack):
             command.undo()
 
-    def redo(self):
+    def do(self):
         for command in self._stack:
             command.do()
 
