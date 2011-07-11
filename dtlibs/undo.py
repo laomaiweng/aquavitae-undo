@@ -17,7 +17,7 @@
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
 '''
-undo.py - Undo/Redo command based framework.
+Undo/Redo command based framework.
 
 This is an undo/redo framework which uses a command stack to track 
 actions.  Commands are defined using decorators on functions and methods, 
@@ -32,14 +32,14 @@ The following example is used to explain basic usage.
 ...     state['pos'] = len(seq) - 1
 >>> @add.undo
 ... def add(state):
-...     seq, pos = state
+...     seq, pos = state['seq'], state['pos']
 ...     del seq[pos]
 >>> sequence = [1, 2, 3, 4]
 >>> add(sequence, 5)
 >>> sequence
 [1, 2, 3, 4, 5]
->>> stack().undotext()
-'Undo Add 5'
+>>> stack().undo_text()
+'Undo Add 4'
 >>> stack().undo()
 >>> sequence
 [1, 2, 3, 4]
@@ -62,7 +62,7 @@ while another actions is in process are ignored. This allows,
 for example, the undo function of an "add" command to call a "delete"
 command safely.
 
->>> @command('Add'):
+>>> @command('Add')
 ... def add(state, seq, item):
 ...     seq.append(item)
 ...     state['seq'] = seq
@@ -72,7 +72,7 @@ command safely.
 ...     delete(state['seq'])
 ...
 >>> @command('Delete')
-... def delete(seq, state):
+... def delete(state, seq):
 ...     state['value'] = seq.pop()
 ...     state['seq'] = seq
 ...
@@ -141,7 +141,7 @@ class Action:
 
     # This is the unformatted text description of the command
     _desc = None
-    
+
     # The do and undo functions. These should be functions, not methods.
     # They are stored in a dict to avoid binding them to this class.
     functions = {'do': None, 'undo': None}
@@ -158,7 +158,7 @@ class Action:
     def do(self):
         ''' Call the _do command. '''
         assert inspect.isfunction(self.functions['do'])
-        args = (self.state,) + self.state['__args__'] 
+        args = (self.state,) + self.state['__args__']
         if self.instance is not None:
             args = (self.instance,) + args
         return self.functions['do'](*args, **self.state['__kwargs__'])
@@ -256,10 +256,10 @@ class stack:
 
     def can_undo(self):
         return len(self._undos) > 0
-    
+
     def can_redo(self):
         return len(self._redos) > 0
-    
+
     def redo(self):
         if self.can_redo():
             command = self._redos.pop()
@@ -297,11 +297,11 @@ class stack:
     def undo_text(self):
         if self.can_undo():
             return ('Undo ' + self._undos[-1].text()).strip()
-    
+
     def redo_text(self):
         if self.can_redo():
             return ('Redo ' + self._redos[-1].text()).strip()
-    
+
     def __len__(self):
         return self.undo_count()
 
