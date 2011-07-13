@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 #
 # Copyright (c) 2011 David Townshend
 #
@@ -144,6 +145,8 @@ class Action:
 
     # The do and undo functions. These should be functions, not methods.
     # They are stored in a dict to avoid binding them to this class.
+
+    # FIXME: This shares the functions between inherited classes.
     functions = {'do': None, 'undo': None}
 
     def __init__(self, instance, args, kwargs):
@@ -161,7 +164,13 @@ class Action:
         args = (self.state,) + self.state['__args__']
         if self.instance is not None:
             args = (self.instance,) + args
-        return self.functions['do'](*args, **self.state['__kwargs__'])
+        try:
+            ret = self.functions['do'](*args, **self.state['__kwargs__'])
+        except TypeError as err:
+            err.args = (err.args[0] + str(args),) + err.args[1:]
+            raise err
+        else:
+            return ret
 
     def undo(self):
         ''' Call the _undo command. '''
