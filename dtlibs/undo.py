@@ -18,15 +18,15 @@
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
 '''
-Undo/Redo command based framework.
+Undo/Redo undoable based framework.
 
-This is an undo/redo framework which uses a command stack to track 
+This is an undo/redo framework which uses a undoable stack to track 
 actions.  Commands are defined using decorators on functions and methods, 
 and a new instance is added to the stack when the function is called.  
 
 The following example is used to explain basic usage.
 
->>> @command('Add {pos}')
+>>> @undoable('Add {pos}')
 ... def add(state, seq, item):
 ...     seq.append(item)
 ...     state['seq'] = seq
@@ -39,7 +39,7 @@ The following example is used to explain basic usage.
 >>> add(sequence, 5)
 >>> sequence
 [1, 2, 3, 4, 5]
->>> stack().undo_text()
+>>> stack().undotext()
 'Undo Add 4'
 >>> stack().undo()
 >>> sequence
@@ -48,22 +48,22 @@ The following example is used to explain basic usage.
 >>> sequence
 [1, 2, 3, 4, 5]
 
-As can be seen from this, a command is defined using the @command 
+As can be seen from this, a undoable is defined using the @undoable 
 decorator, which takes a single string argument representing the undo 
-description.  To clarify, a command is the do and undo functions, and an 
+description.  To clarify, a undoable is the do and undo functions, and an 
 action is the result of calling a do function.
 
 Data required for undoing an action is tranferred through a dict, usually 
 named state, and is the first argument (after self) of the do and
-undo functions.  This dict is also used to format the command 
+undo functions.  This dict is also used to format the undoable 
 description using string formatting.
 
 The stack supports a locking mechanism, whereby any actions pushed
 while another actions is in process are ignored. This allows, 
-for example, the undo function of an "add" command to call a "delete"
-command safely.
+for example, the undo function of an "add" undoable to call a "delete"
+undoable safely.
 
->>> @command('Add')
+>>> @undoable('Add')
 ... def add(state, seq, item):
 ...     seq.append(item)
 ...     state['seq'] = seq
@@ -72,7 +72,7 @@ command safely.
 ... def add(state):
 ...     delete(state['seq'])
 ...
->>> @command('Delete')
+>>> @undoable('Delete')
 ... def delete(state, seq):
 ...     state['value'] = seq.pop()
 ...     state['seq'] = seq
@@ -95,155 +95,203 @@ command safely.
 >>> seq
 [3, 6]
 
+The stack may be cleared if, for example, the document is saved.
+
+>>> stack().canundo()
+True
+>>> stack().clear()
+>>> stack().canundo()
+False
+
 A series of commands may be grouped within a function using the
 group() context manager.
 
->>> @command('Add 1 item'):
+>>> @undoable('Add 1 item')
 ... def add(state, seq, item):
 ...     seq.append(item)
 ...     state['seq'] = seq
 >>> @add.undo
 ... def add(state):
 ...     state['seq'].pop()
-...
->>> def addmany(seq, items, state):
-...     with group('Add many'):
-...         for item in items:
-...         seq.append(item)
 >>> seq = []
->>> addmany(seq, [4, 6, 8])
->>> len(stack())
-1
+>>> with group('Add many'):
+...     for item in [4, 6, 8]:
+...         add(seq, item)
 >>> seq
 [4, 6, 8]
+>>> stack().undocount()
+1
 >>> stack().undo()
 >>> seq
 []
 '''
 
-import logging
-import inspect
+import functools
 
-from dtlibs.decorators import deco_with_args, singleton
+from dtlibs.decorators import singleton
 from collections import deque
 
 class Action:
-    ''' An Action represents the result of a command call.
+    ''' This represents an action which can be done and undone.
     
-    It is initialised with the call arguments and the instance of the 
-    owning class (which may be None), and should be able to do and undo 
-    itself in isolation.  Data related to the action is stored in an 
-    internal variable 'state' which is passed to the do and undo functions
-    as the first argument, after instance. state is a dict, but has two 
-    pre-defined values: __args__ and __kwargs__ which represent the
-    initial call arguments. state is expected to be modified by do, but 
-    not undo.
+    It is basically the result of a call on an undoable function and has
+    three methods: ``do()``, ``undo()`` and ``text()``. This class
+    should always be instantiated by an ActionFactory.
     '''
-
-    # This is the unformatted text description of the command
-    _desc = None
-
-    # The do and undo functions. These should be functions, not methods.
-    # They are stored in a dict to avoid binding them to this class.
-
-    # FIXME: This shares the functions between inherited classes.
-    functions = {'do': None, 'undo': None}
-
-    def __init__(self, instance, args, kwargs):
-        ''' Create the new command instance, storing the args and kwargs
-        in state for future use in redo() and undo(). instance is the 
-        instance of the parent class, if available.
-        '''
-        super().__init__()
-        self.instance = instance
-        self.state = {'__args__': args, '__kwargs__':kwargs}
+    def __init__(self, vars, state):
+        self.vars = vars
+        self.state = state
 
     def do(self):
-        ''' Call the _do command. '''
-        assert inspect.isfunction(self.functions['do'])
-        args = (self.state,) + self.state['__args__']
-        if self.instance is not None:
-            args = (self.instance,) + args
-        try:
-            ret = self.functions['do'](*args, **self.state['__kwargs__'])
-        except TypeError as err:
-            err.args = (err.args[0] + str(args),) + err.args[1:]
-            raise err
+        'Redo the action'
+        if 'instance' in self.vars and self.vars['instance'] is not None:
+            args = (self.vars['instance'], self.state) + self.state['args']
         else:
-            return ret
+            args = (self.state,) + self.state['args']
+        kwargs = self.state['kwargs']
+        return self.vars['do'](*args, **kwargs)
 
     def undo(self):
-        ''' Call the _undo command. '''
-        assert inspect.isfunction(self.functions['undo'])
-        if self.instance is None:
-            self.functions['undo'](self.state)
+        'Undo the action'
+        if 'instance' in self.vars and self.vars['instance'] is not None:
+            args = (self.vars['instance'], self.state)
         else:
-            self.functions['undo'](self.instance, self.state)
+            args = (self.state,)
+        self.vars['undo'](*args)
 
     def text(self):
-        return self._desc.format(**self.state)
+        'Return the descriptive text of the action'
+        return self.vars['text'].format(**self.state)
 
 
-@deco_with_args
-class command:
-    ''' Factory to create new Action objects. '''
-
-    def __init__(self, desc, do):
-        class CmdCls(Action): pass
-        self.cmdcls = CmdCls
-        self.cmdcls._desc = desc
-        if inspect.ismethod(do):
-            do = do.__func__
-        self.cmdcls.functions['do'] = do
+class ActionFactory:
+    ''' Used by the ``undoable`` function to create Actions.
+    
+    ``undoable`` returns an instance of an ActionFactory, which is used 
+    in code to set up the do and undo functions.  When called, it
+    creates a new instance of an Action, runs it and pushes it onto the stack.
+    '''
+    def __init__(self, desc, do, undo):
+        self._desc = desc
+        self._do = do
+        self._undo = undo
         self._instance = None
 
-    def __call__(self, *args, **kwargs):
-        ''' Call the command, thereby creating a new instance and pushing
-        it onto the undo stack.
-        '''
-        if None in self.cmdcls.functions.values():
-            raise TypeError('undo and do must both be defined.')
-        cmd = self.cmdcls(self._instance, args, kwargs)
-        result = cmd.do()
-        stack().append(cmd)
-        return result
-
     def __get__(self, instance, owner):
-        ''' Store the instance of owning class when this is called. '''
+        'Store instance for bound methods.'
         self._instance = instance
         return self
 
-    def undo(self, func):
-        ''' Set the undo action of the command to be created. '''
-        if inspect.ismethod(func):
-            func = func.__func__
-        self.cmdcls.functions['undo'] = func
+    def do(self, func):
+        ' Set the do function'
+        self._do = func
         return self
+
+    def undo(self, func):
+        ' Set the undo function'
+        self._undo = func
+        return self
+
+    def __call__(self, *args, **kwargs):
+        ''' Either set ``do`` or create the action.
+         
+        If do has been set, this will create an Action, run it and 
+        push it onto the stack. If not, it will set the do function.
+        This allows the following two ways of using it:
+        >>> factory = ActionFactory('desc', None, None)
+        >>> @factory
+        ... def do_something(self):
+        ...     pass
+        >>> do_something is factory
+        True
+        '''
+        if self._do is None:
+            self.do(args[0])
+            return self
+        else:
+            assert None not in [self._do, self._undo]
+            state = {'args': args, 'kwargs': kwargs}
+            vars = {'text': self._desc, 'instance': self._instance,
+                    'do': self._do, 'undo': self._undo}
+            action = Action(vars, state)
+            ret = action.do()
+            stack().append(action)
+            return ret
+
+
+def undoable(desc, do=None, undo=None):
+    ''' Factory to create a new undoable action type. 
+    
+    This function creates a new undoable command given a description
+    and do function. An undo function must also be specified before
+    it is used, but is optional to allow ``undoable`` to be used as a
+    decorator. The command object returned has an ``undo`` method 
+    which can be used as a decorator to set the undo function.
+    
+    >>> def do_something(state):
+    ...     pass
+    >>> def undo_something(state):
+    ...     pass
+    >>> command = undoable('Do something', do_something, undo_something)
+    
+    Or as a decorator:
+    
+    >>> @undoable('Do something')
+    ... def do_something(state):
+    ...     pass
+    >>> @do_something.undo
+    ... def do_something(state):
+    ...     pass
+    
+    Both the do and undo functions should accept a ``state`` variable, 
+    which is passed as the first argument (after ``self``) to ``do``
+    and as the only argument (other than ``self``) to ``undo``.   
+    ``state`` is a dict of values which are used to transfer data between
+    do and undo, and initially contains keys 'args' and 'kwargs' which
+    correspond to the arguments passed to the do function.
+    
+    The description string can include formatting commands (see python string 
+    formatting), which are formatted using the state variable. This can be
+    retrieved using ``stack().undotext()``
+    
+    >>> @undoable('description of {foo}')
+    ... def do_foo(state):
+    ...     state['foo'] = 'bar'
+    >>> @do_foo.undo
+    ... def do_foo(state):
+    ...     pass
+    >>> do_foo()
+    >>> stack().undotext()
+    'Undo description of bar'
+    '''
+    factory = ActionFactory(desc, do, undo)
+    functools.update_wrapper(factory, do)
+    return factory
 
 
 class group:
-    ''' A command group context manager. '''
+    ''' A undoable group context manager. '''
 
     def __init__(self, desc):
         self._desc = desc
         self._stack = []
 
     def __enter__(self):
-        stack().set_receiver(self._stack)
+        stack().setreceiver(self._stack)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            stack().reset_receiver()
+            stack().resetreceiver()
             stack().append(self)
         return False
 
     def undo(self):
-        for command in reversed(self._stack):
-            command.undo()
+        for undoable in reversed(self._stack):
+            undoable.undo()
 
     def do(self):
-        for command in self._stack:
-            command.do()
+        for undoable in self._stack:
+            undoable.do()
 
     def text(self):
         return self._desc.format(count=len(self._stack))
@@ -254,7 +302,7 @@ class stack:
     ''' The main undo stack. 
     
     The two key features are the redo() and undo() methods. If an 
-    exception occurs during doing or undoing a command, the command
+    exception occurs during doing or undoing a undoable, the undoable
     aborts and the stack is cleared to avoid any further data corruption.  
     '''
 
@@ -263,59 +311,56 @@ class stack:
         self._redos = deque()
         self._receiver = self._undos
 
-    def can_undo(self):
+    def canundo(self):
         return len(self._undos) > 0
 
-    def can_redo(self):
+    def canredo(self):
         return len(self._redos) > 0
 
     def redo(self):
-        if self.can_redo():
-            command = self._redos.pop()
+        if self.canredo():
+            undoable = self._redos.pop()
             try:
-                command.do()
+                undoable.do()
             except:
                 self.clear()
                 raise
             else:
-                self._undos.append(command)
+                self._undos.append(undoable)
 
 
     def undo(self):
-        if self.can_undo():
-            command = self._undos.pop()
+        if self.canundo():
+            undoable = self._undos.pop()
             try:
-                command.undo()
+                undoable.undo()
             except:
                 self.clear()
                 raise
             else:
-                self._redos.append(command)
+                self._redos.append(undoable)
 
     def clear(self):
         ''' Clear the undo list. '''
         self._undos.clear()
         self._redos.clear()
 
-    def undo_count(self):
+    def undocount(self):
         return len(self._undos)
 
-    def redo_count(self):
+    def redocount(self):
         return len(self._undos)
 
-    def undo_text(self):
-        if self.can_undo():
+    def undotext(self):
+        if self.canundo():
             return ('Undo ' + self._undos[-1].text()).strip()
 
-    def redo_text(self):
-        if self.can_redo():
+    def redotext(self):
+        if self.canredo():
             return ('Redo ' + self._redos[-1].text()).strip()
 
-    def __len__(self):
-        return self.undo_count()
-
-    def set_receiver(self, receiver=None):
-        ''' Set and object to receiver commands pushed onto the stack.
+    def setreceiver(self, receiver=None):
+        ''' Set an object to receiver commands pushed onto the stack.
         
         By default it is the internal stack, but it can be set (usually
         internally) to any object with and append() method.
@@ -323,12 +368,12 @@ class stack:
         assert hasattr(receiver, 'append')
         self._receiver = receiver
 
-    def reset_receiver(self):
+    def resetreceiver(self):
         ''' Reset the receiver to the internal stack.'''
         self._receiver = self._undos
 
-    def append(self, command):
-        ''' Add a command to the stack, using receiver.append(). '''
+    def append(self, action):
+        ''' Add a undoable to the stack, using receiver.append(). '''
         if self._receiver is not None:
-            self._receiver.append(command)
+            self._receiver.append(action)
 
