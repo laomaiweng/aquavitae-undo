@@ -128,7 +128,7 @@ group() context manager.
 
 import functools
 
-from dtlibs.decorators import singleton
+from dtlibs.functions import singleton
 from collections import deque
 
 class Action:
