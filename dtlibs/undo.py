@@ -376,4 +376,6 @@ class stack:
         ''' Add a undoable to the stack, using receiver.append(). '''
         if self._receiver is not None:
             self._receiver.append(action)
+        if self._receiver is self._undos:
+            self._redos.clear()
 

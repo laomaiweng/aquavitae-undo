@@ -130,6 +130,22 @@ class Stack(TestCase):
         undo.stack().append('one')
         self.assertEqual(undo.stack()._undos, deque(['one']))
 
+    def test_undo_changes_stacks(self):
+        undoable = flexmock(undo.Action({}, {})).should_receive('undo').mock
+        undo.stack()._undos = deque([1, 2, undoable])
+        undo.stack()._redos = deque([4, 5, 6])
+        undo.stack().undo()
+        self.assertEqual(undo.stack()._undos, deque([1, 2]))
+        self.assertEqual(undo.stack()._redos, deque([4, 5, 6, undoable]))
+
+    def test_undo_resets_redos(self):
+        undo.stack()._undos = deque([1, 2, 3])
+        undo.stack()._redos = deque([4, 5, 6])
+        undo.stack()._receiver = undo.stack()._undos
+        undo.stack().append(7)
+        self.assertEqual(undo.stack()._undos, deque([1, 2, 3, 7]))
+        self.assertEqual(undo.stack()._redos, deque([]))
+
     def test_undotext(self):
         action = flexmock(undo.Action({}, {})).should_receive(
                                               'text').and_return('blah').mock
@@ -245,145 +261,42 @@ class TestSystem(TestCase):
         undo.stack().undo()
         self.assertEqual(seq, [])
 
-#class Testundoable(unittest.TestCase):
-#
-#    def setUp(self):
-#        flexmock(undo).should_receive('stack.append')
-#
-#    def tearDown(self):
-#        reload(undo)
-#
-#    def testUnbound(self):
-#        @undo.undoable('desc')
-#        def do(state, arg):
-#            _ = arg
-#        do = do.undo(do)
-#        # Calling this should not result in any errors
-#        do(4)
-#
-#    def testBound(self):
-#        def cmdcls(i, a):
-#            assert(isinstance(i, T))
-#            assert(a == 4)
-#            return flexmock()
-#        class T:
-#            def __init__(self):
-#                self.var = 0
-#            @undo.undoable('desc')
-#            def do(self, state, arg):
-#                state['arg'] = arg
-#            do = do.undo(do)
-#        # Calling this should not result in any errors
-#        T().do(4)
-#
-#
-#class TestFunction(unittest.TestCase):
-#    ''' Test for normal functions.'''
-#
-#    def tearDown(self):
-#        reload(undo)
-#        try:
-#            del self.var
-#            del self.oldvar
-#        except AttributeError:
-#            pass
-#
-#    def testBasic(self):
-#        self.var = 0
-#        @undo.undoable('test')
-#        def func1(state):
-#            self.var = 1
-#        @func1.undo
-#        def func1(state):
-#            self.var = 0
-#        func1()
-#        self.assertEqual(self.var, 1)
-#        undo.stack().undo()
-#        self.assertEqual(self.var, 0)
-#
-#
-#
-#class TestBound(unittest.TestCase):
-#    ''' Test for action on bound functions.'''
-#
-#    def tearDown(self):
-#        reload(undo)
-#
-#    def test_undo(self):
-#        s = undo.stack()
-#        act1 = flexmock().should_receive('undo').mock
-#        act2 = flexmock().should_receive('undo').mock
-#        act3 = flexmock().should_receive('undo').mock
-#        s._undos = deque([act1, act2, act3])
-#        s.undo()
-#        self.assertEqual(s._undos, deque([act1, act2]))
-#        self.assertEqual(s._redos, deque([act3]))
-#
-#    def test_redo(self):
-#        s = undo.stack()
-#        act1 = flexmock().should_receive('do').mock
-#        act2 = flexmock().should_receive('do').mock
-#        act3 = flexmock().should_receive('do').mock
-#        s._redos = deque([act1, act2, act3])
-#        s.redo()
-#        self.assertEqual(s._redos, deque([act1, act2]))
-#        self.assertEqual(s._undos, deque([act3]))
-#
-#    def test_undo_text(self):
-#        act = flexmock().should_receive('text').and_return('some text').mock
-#        undo.stack()._undos = deque([act])
-#        self.assertEqual(undo.stack().undo_text(), 'Undo some text')
-#
-#    def test_undo_text_blank(self):
-#        act = flexmock().should_receive('text').and_return('').mock
-#        undo.stack()._undos = [act]
-#        self.assertEqual(undo.stack().undo_text(), 'Undo')
-#
-#class Group(TestCase):
-#
-#    def test_context(self):
-#        'Make sure group works correctly as a context manager'
-#        stack = []
-#        flexmock(undo.stack()).should_receive('set_receiver').with_args(stack).ordered
-#        flexmock(undo.stack()).should_receive('reset_receiver').ordered
-#        g = undo.group('')
-#        with g:
-#            pass
-#        self.assertEqual(undo.stack()._undos, deque([g]))
-#
-#    def test_stack(self):
-#        'Test that commands are passed to the group and not the main stack.'
-#        g = undo.group('')
-#        with g:
-#            undo.stack().append('command1')
-#            self.assertEqual(undo.stack()._undos, deque())
-#            self.assertEqual(g._stack, ['command1'])
-#        self.assertEqual(undo.stack()._undos, deque([g]))
-#
-#    def setup_actions(self):
-#        self.calls = []
-#        self.g = undo.group('')
-#        com1 = flexmock()
-#        com2 = flexmock()
-#        com3 = flexmock()
-#        com1.should_receive('undo').replace_with(lambda: self.calls.append('com1')).mock
-#        com2.should_receive('undo').replace_with(lambda: self.calls.append('com2')).mock
-#        com3.should_receive('undo').replace_with(lambda: self.calls.append('com3')).mock
-#        com1.should_receive('do').replace_with(lambda: self.calls.append('com1')).mock
-#        com2.should_receive('do').replace_with(lambda: self.calls.append('com2')).mock
-#        com3.should_receive('do').replace_with(lambda: self.calls.append('com3')).mock
-#        self.g._stack.append(com1)
-#        self.g._stack.append(com2)
-#        self.g._stack.append(com3)
-#
-#    def test_do(self):
-#        'Test that undone actions can be redone in order'
-#        self.setup_actions()
-#        self.g.do()
-#        self.assertEqual(self.calls, ['com1', 'com2', 'com3'])
-#
-#    def test_undo(self):
-#        'Test that undone actions can be redone in order'
-#        self.setup_actions()
-#        self.g.undo()
-#        self.assertEqual(self.calls, ['com3', 'com2', 'com1'])
+    def testBound(self):
+        class Mod:
+            def __init__(self):
+                self.l = set()
+
+            @undo.undoable('Add {value}')
+            def add(self, state, value):
+                self.l.add(value)
+                state['value'] = value
+
+            @add.undo
+            def add(self, state):
+                self.l.remove(state['value'])
+
+            @undo.undoable('Delete {value}')
+            def delete(self, state, value):
+                self.l.remove(value)
+                state['value'] = value
+
+            @delete.undo
+            def delete(self, state):
+                self.l.add(state['value'])
+
+        m = Mod()
+        self.assertEqual(m.l, set())
+        m.add(3)
+        m.add(4)
+        self.assertEqual(m.l, set([3, 4]))
+        self.assertEqual(undo.stack().undotext(), 'Undo Add 4')
+        undo.stack().undo()
+        self.assertEqual(m.l, set([3]))
+        m.delete(3)
+        self.assertEqual(m.l, set())
+        undo.stack().undo()
+        self.assertEqual(m.l, set([3]))
+        self.assertTrue(undo.stack().canundo())
+        undo.stack().undo()
+        self.assertEqual(m.l, set())
+        self.assertFalse(undo.stack().canundo())
