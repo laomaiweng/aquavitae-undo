@@ -44,7 +44,7 @@ class Undoable(TestCase):
         'Function should run with basic arguments'
         do = lambda state: None
         undo_ = lambda state: None
-        undo.undoable('desc', do, undo)
+        undo.undoable('desc', do, undo_)
 
     def test_decorator(self):
         'Function can be used as a decorator'
