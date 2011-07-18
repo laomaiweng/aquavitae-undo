@@ -80,7 +80,7 @@ class Undoable(TestCase):
         self.assertTrue(self.undo_called)
 
 
-class Action(TestCase):
+class _Action(TestCase):
 
     def test_state(self):
         'Make sure state is transferred'
@@ -89,7 +89,7 @@ class Action(TestCase):
         def undo_(state):
             self.assertTrue(state['done'])
             state['undone'] = True
-        action = undo.Action({'do': do, 'undo': undo_},
+        action = undo._Action({'do': do, 'undo': undo_},
                         {'args': tuple(), 'kwargs': {}})
         action.do()
         self.assertEqual(action.state, {'args': tuple(), 'kwargs': {},
@@ -100,7 +100,7 @@ class Action(TestCase):
 
     def test_text(self):
         'description gets formatted with state'
-        action = undo.Action({'text': 'desc - {foo}'}, {'foo': 'bar'})
+        action = undo._Action({'text': 'desc - {foo}'}, {'foo': 'bar'})
         self.assertEqual(action.text(), 'desc - bar')
 
 
@@ -108,16 +108,16 @@ class Group(TestCase):
 
     def test_stack(self):
         'Test the relationship with undo.stack()'
-        group = undo.group('')
+        _Group = undo._Group('')
         stack = []
-        group._stack = stack
+        _Group._stack = stack
         flexmock(undo.stack()).should_call('setreceiver').with_args(stack).ordered
         flexmock(undo.stack()).should_call('resetreceiver').with_args().ordered
-        flexmock(undo.stack()).should_call('append').with_args(group).ordered
-        with group:
+        flexmock(undo.stack()).should_call('append').with_args(_Group).ordered
+        with _Group:
             pass
         self.assertEqual(stack, [])
-        self.assertEqual(undo.stack()._undos, deque([group]))
+        self.assertEqual(undo.stack()._undos, deque([_Group]))
 
 
 class Stack(TestCase):
@@ -131,7 +131,7 @@ class Stack(TestCase):
         self.assertEqual(undo.stack()._undos, deque(['one']))
 
     def test_undo_changes_stacks(self):
-        undoable = flexmock(undo.Action({}, {})).should_receive('undo').mock
+        undoable = flexmock(undo._Action({}, {})).should_receive('undo').mock
         undo.stack()._undos = deque([1, 2, undoable])
         undo.stack()._redos = deque([4, 5, 6])
         undo.stack().undo()
@@ -147,13 +147,13 @@ class Stack(TestCase):
         self.assertEqual(undo.stack()._redos, deque([]))
 
     def test_undotext(self):
-        action = flexmock(undo.Action({}, {})).should_receive(
+        action = flexmock(undo._Action({}, {})).should_receive(
                                               'text').and_return('blah').mock
         undo.stack()._undos = [action]
         self.assertEqual(undo.stack().undotext(), 'Undo blah')
 
     def test_redotext(self):
-        action = flexmock(undo.Action({}, {})).should_receive(
+        action = flexmock(undo._Action({}, {})).should_receive(
                                               'text').and_return('blah').mock
         undo.stack()._redos = [action]
         self.assertEqual(undo.stack().redotext(), 'Redo blah')
@@ -221,7 +221,7 @@ class TestSystem(TestCase):
         self.assertEqual(l._l, [])
 
     def testGroups1(self):
-        'Test group behaviour'
+        'Test _Group behaviour'
         @undo.undoable('add @{pos} to {seq}')
         def add(state, seq, item):
             seq.append(item)
@@ -232,7 +232,7 @@ class TestSystem(TestCase):
             seq, pos = state['seq'], state['pos']
             del seq[pos]
         sequence = [1, 2]
-        with undo.group('add many'):
+        with undo._Group('add many'):
             for i in range(5, 8):
                 add(sequence, i)
         self.assertEqual(sequence, [1, 2, 5, 6, 7])
@@ -253,7 +253,7 @@ class TestSystem(TestCase):
         def add(state):
             state['seq'].pop()
         seq = []
-        with undo.group('Add many'):
+        with undo._Group('Add many'):
             for item in [4, 6, 8]:
                 add(seq, item)
         self.assertEqual(seq, [4, 6, 8])
