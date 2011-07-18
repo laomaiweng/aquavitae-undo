@@ -18,50 +18,69 @@
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
 '''
-Undo/Redo undoable based framework.
-
 This is an undo/redo framework which uses a undoable stack to track 
 actions.  Commands are defined using decorators on functions and methods, 
 and a new instance is added to the stack when the function is called.  
 
-The following example is used to explain basic usage.
+Usage
+-------
+
+Basic operation
+^^^^^^^^^^^^^^^
+
+The roles of an _Action are normally set using the :func:`undoable` 
+function as a decorator on the *do* function. This returns an
+:class:`_ActionFactory` instance. :func:`_ActionFactory.undo` can
+also be used as a decorator on the *undo* function.
 
 >>> @undoable('Add {pos}')
 ... def add(state, seq, item):
 ...     seq.append(item)
 ...     state['seq'] = seq
 ...     state['pos'] = len(seq) - 1
+... 
 >>> @add.undo
 ... def add(state):
 ...     seq, pos = state['seq'], state['pos']
 ...     del seq[pos]
+
+As can be seen from this, a common argument, *state*, is used to transfer 
+data between the functions. The exposed signature of *add*, however is
+``add(seq, item)``. *state* is a dict in which data may be stored as 
+required to undo the operation. It is also used to format the description of
+the operation as returned by :func:`stack.undotext` and 
+:func:`stack.redotext`.
+
+*add* now acts as a normal function.
+
 >>> sequence = [1, 2, 3, 4]
 >>> add(sequence, 5)
 >>> sequence
 [1, 2, 3, 4, 5]
+
+However, in the background, when it is called, an instance of the _Action is
+stored in :class:`stack`. The description of the action can be queried
+using :func:`stack.undotext`.
+
 >>> stack().undotext()
 'Undo Add 4'
+
+The action can be undone using :func:`stack.undo`.
+
 >>> stack().undo()
 >>> sequence
 [1, 2, 3, 4]
+
+It can then be redone with :func:`stack.redo`.
+
 >>> stack().redo()
 >>> sequence
 [1, 2, 3, 4, 5]
 
-As can be seen from this, a undoable is defined using the @undoable 
-decorator, which takes a single string argument representing the undo 
-description.  To clarify, a undoable is the do and undo functions, and an 
-action is the result of calling a do function.
+Nested actions
+^^^^^^^^^^^^^^
 
-Data required for undoing an action is tranferred through a dict, usually 
-named state, and is the first argument (after self) of the do and
-undo functions.  This dict is also used to format the undoable 
-description using string formatting.
-
-The stack supports a locking mechanism, whereby any actions pushed
-while another actions is in process are ignored. This allows, 
-for example, the undo function of an "add" undoable to call a "delete"
-undoable safely.
+Consider a slightly more complex example which also allows deletions.
 
 >>> @undoable('Add')
 ... def add(state, seq, item):
@@ -80,7 +99,10 @@ undoable safely.
 >>> @delete.undo
 ... def delete(state):
 ...     add(state['seq'], state['value'])
-...
+
+This example illustrates that undoable actions can call each other safely (
+*delete.undo* calls *add* and *add.undo* calls *delete*).
+
 >>> seq = [3, 6]
 >>> add(seq, 4)
 >>> seq
@@ -95,6 +117,9 @@ undoable safely.
 >>> seq
 [3, 6]
 
+Clearing the stack
+^^^^^^^^^^^^^^^^^^
+
 The stack may be cleared if, for example, the document is saved.
 
 >>> stack().canundo()
@@ -103,18 +128,14 @@ True
 >>> stack().canundo()
 False
 
-A series of commands may be grouped within a function using the
-group() context manager.
+Groups
+^^^^^^
 
->>> @undoable('Add 1 item')
-... def add(state, seq, item):
-...     seq.append(item)
-...     state['seq'] = seq
->>> @add.undo
-... def add(state):
-...     state['seq'].pop()
+A series of commands may be grouped within a function using the
+_Group() context manager.
+
 >>> seq = []
->>> with group('Add many'):
+>>> with _Group('Add many'):
 ...     for item in [4, 6, 8]:
 ...         add(seq, item)
 >>> seq
@@ -124,6 +145,9 @@ group() context manager.
 >>> stack().undo()
 >>> seq
 []
+
+Members
+-------
 '''
 
 import functools
@@ -131,12 +155,12 @@ import functools
 from dtlibs.functions import singleton
 from collections import deque
 
-class Action:
+class _Action:
     ''' This represents an action which can be done and undone.
     
     It is basically the result of a call on an undoable function and has
     three methods: ``do()``, ``undo()`` and ``text()``. This class
-    should always be instantiated by an ActionFactory.
+    should always be instantiated by an _ActionFactory.
     '''
     def __init__(self, vars, state):
         self.vars = vars
@@ -164,12 +188,12 @@ class Action:
         return self.vars['text'].format(**self.state)
 
 
-class ActionFactory:
+class _ActionFactory:
     ''' Used by the ``undoable`` function to create Actions.
     
-    ``undoable`` returns an instance of an ActionFactory, which is used 
+    ``undoable`` returns an instance of an _ActionFactory, which is used 
     in code to set up the do and undo functions.  When called, it
-    creates a new instance of an Action, runs it and pushes it onto the stack.
+    creates a new instance of an _Action, runs it and pushes it onto the stack.
     '''
     def __init__(self, desc, do, undo):
         self._desc = desc
@@ -195,10 +219,10 @@ class ActionFactory:
     def __call__(self, *args, **kwargs):
         ''' Either set ``do`` or create the action.
          
-        If do has been set, this will create an Action, run it and 
+        If do has been set, this will create an _Action, run it and 
         push it onto the stack. If not, it will set the do function.
         This allows the following two ways of using it:
-        >>> factory = ActionFactory('desc', None, None)
+        >>> factory = _ActionFactory('desc', None, None)
         >>> @factory
         ... def do_something(self):
         ...     pass
@@ -213,7 +237,7 @@ class ActionFactory:
             state = {'args': args, 'kwargs': kwargs}
             vars = {'text': self._desc, 'instance': self._instance,
                     'do': self._do, 'undo': self._undo}
-            action = Action(vars, state)
+            action = _Action(vars, state)
             ret = action.do()
             stack().append(action)
             return ret
@@ -264,13 +288,13 @@ def undoable(desc, do=None, undo=None):
     >>> stack().undotext()
     'Undo description of bar'
     '''
-    factory = ActionFactory(desc, do, undo)
+    factory = _ActionFactory(desc, do, undo)
     functools.update_wrapper(factory, do)
     return factory
 
 
-class group:
-    ''' A undoable group context manager. '''
+class _Group:
+    ''' A undoable _Group context manager. '''
 
     def __init__(self, desc):
         self._desc = desc
@@ -297,9 +321,21 @@ class group:
         return self._desc.format(count=len(self._stack))
 
 
+def group(desc):
+    ''' Return a context manager for grouping undoable actions. '''
+    return _Group(desc)
+
 @singleton
 class stack:
     ''' The main undo stack. 
+    
+    This is a singleton, so it can always be called as ``stack()``.
+    
+    >>> stk = stack()
+    >>> stk is stack()
+    True
+    >>> stack() is stack()
+    True
     
     The two key features are the redo() and undo() methods. If an 
     exception occurs during doing or undoing a undoable, the undoable
@@ -312,12 +348,19 @@ class stack:
         self._receiver = self._undos
 
     def canundo(self):
+        ''' Return True if undos are available '''
         return len(self._undos) > 0
 
     def canredo(self):
+        ''' Return True if redos are available '''
         return len(self._redos) > 0
 
     def redo(self):
+        ''' Redo the last undone action. 
+        
+        This is only possible if no other actions have occurred since the 
+        last undo call.
+        '''
         if self.canredo():
             undoable = self._redos.pop()
             try:
@@ -328,8 +371,8 @@ class stack:
             else:
                 self._undos.append(undoable)
 
-
     def undo(self):
+        ''' Undo the last action. '''
         if self.canundo():
             undoable = self._undos.pop()
             try:
@@ -346,16 +389,20 @@ class stack:
         self._redos.clear()
 
     def undocount(self):
+        ''' Return the number of undos available. '''
         return len(self._undos)
 
     def redocount(self):
+        ''' Return the number of redos available. '''
         return len(self._undos)
 
     def undotext(self):
+        ''' Return a description of the next available undo. '''
         if self.canundo():
             return ('Undo ' + self._undos[-1].text()).strip()
 
     def redotext(self):
+        ''' Return a description of the next available redo. '''
         if self.canredo():
             return ('Redo ' + self._redos[-1].text()).strip()
 

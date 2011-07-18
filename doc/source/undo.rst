@@ -3,5 +3,4 @@ dtlibs.undo
 ===========
 
 .. automodule:: dtlibs.undo
-   :members:
-   :undoc-members:
+   :members: undoable, group, stack
