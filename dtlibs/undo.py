@@ -152,7 +152,7 @@ Members
 
 import functools
 
-from dtlibs.functions import singleton
+from dtlibs.functions import singleton, none
 from collections import deque
 
 class _Action:
@@ -339,13 +339,42 @@ class stack:
     
     The two key features are the redo() and undo() methods. If an 
     exception occurs during doing or undoing a undoable, the undoable
-    aborts and the stack is cleared to avoid any further data corruption.  
+    aborts and the stack is cleared to avoid any further data corruption. 
+    
+    The stack provides two properties for tracking actions: *docallback* 
+    and *undocallback*. Each of these allow a callback function to be set
+    which is called when an action is done or undone repectively. By default, 
+    they do nothing.
+    
+    >>> def done():
+    ...     print('Can now undo: {}'.format(stack().undotext()))
+    >>> def undone():
+    ...     print('Can now redo: {}'.format(stack().redotext()))
+    >>> stack().docallback = done
+    >>> stack().undocallback = undone
+    >>> def action(state): pass
+    >>> action = undoable('An action', action, action)
+    >>> action()
+    Can now undo: Undo An action
+    >>> stack().undo()
+    Can now redo: Redo An action
+    >>> stack().redo()
+    Can now undo: Undo An action
+    
+    Setting them back to :func:`dtlibs.functions.none` will stop any 
+    further actions.
+    
+    >>> stack().docallback = stack().undocallback = none
+    >>> action()
+    >>> stack().undo()
     '''
 
     def __init__(self):
         self._undos = deque()
         self._redos = deque()
         self._receiver = self._undos
+        self.undocallback = none
+        self.docallback = none
 
     def canundo(self):
         ''' Return True if undos are available '''
@@ -370,6 +399,7 @@ class stack:
                 raise
             else:
                 self._undos.append(undoable)
+                self.docallback()
 
     def undo(self):
         ''' Undo the last action. '''
@@ -382,6 +412,7 @@ class stack:
                 raise
             else:
                 self._redos.append(undoable)
+                self.undocallback()
 
     def clear(self):
         ''' Clear the undo list. '''
@@ -425,4 +456,5 @@ class stack:
             self._receiver.append(action)
         if self._receiver is self._undos:
             self._redos.clear()
+            self.docallback()
 
