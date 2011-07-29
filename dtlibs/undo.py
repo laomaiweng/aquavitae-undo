@@ -152,7 +152,7 @@ Members
 
 import functools
 
-from dtlibs.functions import singleton, none
+from dtlibs.core import singleton, none
 from collections import deque
 
 class _Action:
@@ -361,7 +361,7 @@ class stack:
     >>> stack().redo()
     Can now undo: Undo An action
     
-    Setting them back to :func:`dtlibs.functions.none` will stop any 
+    Setting them back to :func:`dtlibs.core.none` will stop any 
     further actions.
     
     >>> stack().docallback = stack().undocallback = none
