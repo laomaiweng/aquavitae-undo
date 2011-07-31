@@ -20,7 +20,7 @@
 
 import unittest
 from imp import reload
-from flexmock import flexmock_pytest as flexmock
+from flexmock import flexmock
 
 from collections import deque
 
