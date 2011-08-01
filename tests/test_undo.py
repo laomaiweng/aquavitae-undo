@@ -108,6 +108,7 @@ class Group(TestCase):
 
     def test_stack(self):
         'Test the relationship with undo.stack()'
+        undo.stack().clear()
         _Group = undo._Group('')
         stack = []
         _Group._stack = stack
