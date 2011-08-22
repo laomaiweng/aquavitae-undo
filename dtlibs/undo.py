@@ -28,10 +28,9 @@ Usage
 Basic operation
 ^^^^^^^^^^^^^^^
 
-The roles of an _Action are normally set using the :func:`undoable` 
-function as a decorator on the *do* function. This returns an
-:class:`_ActionFactory` instance. :func:`_ActionFactory.undo` can
-also be used as a decorator on the *undo* function.
+Undo commands are defined using :func:`undoable` as a decorator. The
+returned object has a :func:`undo` method, which should then be used
+to defined the undo operation. 
 
 >>> @undoable('Add {pos}')
 ... def add(state, seq, item):
@@ -58,9 +57,9 @@ the operation as returned by :func:`stack.undotext` and
 >>> sequence
 [1, 2, 3, 4, 5]
 
-However, in the background, when it is called, an instance of the _Action is
-stored in :class:`stack`. The description of the action can be queried
-using :func:`stack.undotext`.
+However, in the background, when it is called, an instance of the action is
+stored in `stack` and its description can be queried using 
+:func:`stack.undotext`.
 
 >>> stack().undotext()
 'Undo Add 4'
@@ -100,8 +99,8 @@ Consider a slightly more complex example which also allows deletions.
 ... def delete(state):
 ...     add(state['seq'], state['value'])
 
-This example illustrates that undoable actions can call each other safely (
-*delete.undo* calls *add* and *add.undo* calls *delete*).
+This example illustrates that undoable actions can call each other safely 
+(*delete.undo()* calls *add()* and *add.undo()* calls *delete()*).
 
 >>> seq = [3, 6]
 >>> add(seq, 4)
@@ -132,7 +131,7 @@ Groups
 ^^^^^^
 
 A series of commands may be grouped within a function using the
-_Group() context manager.
+:func:`group` context manager.
 
 >>> seq = []
 >>> with _Group('Add many'):
@@ -149,6 +148,14 @@ _Group() context manager.
 Members
 -------
 '''
+
+# Implementation Notes
+# ^^^^^^^^^^^^^^^^^^^^
+
+# The roles of an _Action are normally set using the :func:`undoable` 
+# function as a decorator on the *do* function. This returns an
+# :class:`_ActionFactory` instance. :func:`_ActionFactory.undo` can
+# also be used as a decorator on the *undo* function.
 
 import functools
 
@@ -248,8 +255,8 @@ def undoable(desc, do=None, undo=None):
     
     This function creates a new undoable command given a description
     and do function. An undo function must also be specified before
-    it is used, but is optional to allow ``undoable`` to be used as a
-    decorator. The command object returned has an ``undo`` method 
+    it is used, but is optional to allow :func:`undoable` to be used as a
+    decorator. The command object returned has an *undo* method 
     which can be used as a decorator to set the undo function.
     
     >>> def do_something(state):
@@ -267,16 +274,16 @@ def undoable(desc, do=None, undo=None):
     ... def do_something(state):
     ...     pass
     
-    Both the do and undo functions should accept a ``state`` variable, 
-    which is passed as the first argument (after ``self``) to ``do``
-    and as the only argument (other than ``self``) to ``undo``.   
-    ``state`` is a dict of values which are used to transfer data between
-    do and undo, and initially contains keys 'args' and 'kwargs' which
-    correspond to the arguments passed to the do function.
+    Both the do and undo functions should accept a *state* variable, 
+    which is passed as the first argument (after *self*) to the *do*
+    function and as the only argument (other than *self*) to the *undo*
+    function. *state* is a dict of values which are used to transfer 
+    data between *do* and *undo*, and initially contains keys 'args' and 
+    'kwargs' which correspond to the arguments passed to the *do* function.
     
-    The description string can include formatting commands (see python string 
-    formatting), which are formatted using the state variable. This can be
-    retrieved using ``stack().undotext()``
+    The description string can include formatting commands (see 
+    `string-formatting`), which are formatted using the state variable. 
+    This can be retrieved using ``stack().undotext()``
     
     >>> @undoable('description of {foo}')
     ... def do_foo(state):
@@ -294,7 +301,7 @@ def undoable(desc, do=None, undo=None):
 
 
 class _Group:
-    ''' A undoable _Group context manager. '''
+    ''' A undoable group context manager. '''
 
     def __init__(self, desc):
         self._desc = desc
@@ -336,7 +343,7 @@ class stack(metaclass=singleton):
     >>> stack() is stack()
     True
     
-    The two key features are the redo() and undo() methods. If an 
+    The two key features are the :func:`redo` and :func:`undo` methods. If an 
     exception occurs during doing or undoing a undoable, the undoable
     aborts and the stack is cleared to avoid any further data corruption. 
     
@@ -376,11 +383,11 @@ class stack(metaclass=singleton):
         self.docallback = none
 
     def canundo(self):
-        ''' Return True if undos are available '''
+        ''' Return *True* if undos are available '''
         return len(self._undos) > 0
 
     def canredo(self):
-        ''' Return True if redos are available '''
+        ''' Return *True* if redos are available '''
         return len(self._redos) > 0
 
     def redo(self):
@@ -440,7 +447,7 @@ class stack(metaclass=singleton):
         ''' Set an object to receiver commands pushed onto the stack.
         
         By default it is the internal stack, but it can be set (usually
-        internally) to any object with and append() method.
+        internally) to any object with an *append()* method.
         '''
         assert hasattr(receiver, 'append')
         self._receiver = receiver
@@ -450,7 +457,7 @@ class stack(metaclass=singleton):
         self._receiver = self._undos
 
     def append(self, action):
-        ''' Add a undoable to the stack, using receiver.append(). '''
+        ''' Add a undoable to the stack, using ``receiver.append()``. '''
         if self._receiver is not None:
             self._receiver.append(action)
         if self._receiver is self._undos:
