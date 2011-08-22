@@ -29,7 +29,7 @@ Basic operation
 ^^^^^^^^^^^^^^^
 
 Undo commands are defined using :func:`undoable` as a decorator. The
-returned object has a :func:`undo` method, which should then be used
+returned object has an *undo()* method, which should then be used
 to defined the undo operation. 
 
 >>> @undoable('Add {pos}')
@@ -282,7 +282,7 @@ def undoable(desc, do=None, undo=None):
     'kwargs' which correspond to the arguments passed to the *do* function.
     
     The description string can include formatting commands (see 
-    `string-formatting`), which are formatted using the state variable. 
+    :ref:`Python's String Formatting <python:string-formatting>`), which are formatted using the state variable. 
     This can be retrieved using ``stack().undotext()``
     
     >>> @undoable('description of {foo}')
