@@ -373,12 +373,27 @@ class stack(metaclass=singleton):
     >>> stack().docallback = stack().undocallback = none
     >>> action()
     >>> stack().undo()
+    
+    It is possible to mark a point in the undo history when the document
+    handled is saved. This allows the undo system to report whether a 
+    document has changed. The point is marked using :func:`savepoint` and
+    :func:`haschanged` returns whether or not the state has changed (either
+    by doing or undoing an action). Only one savepoint can be tracked,
+    marking a new one removes the old one.
+    
+    >>> stack().savepoint()
+    >>> stack().haschanged()
+    False
+    >>> action()
+    >>> stack().haschanged()
+    True
     '''
 
     def __init__(self):
         self._undos = deque()
         self._redos = deque()
         self._receiver = self._undos
+        self._savepoint = None
         self.undocallback = none
         self.docallback = none
 
@@ -424,6 +439,7 @@ class stack(metaclass=singleton):
         ''' Clear the undo list. '''
         self._undos.clear()
         self._redos.clear()
+        self._savepoint = None
 
     def undocount(self):
         ''' Return the number of undos available. '''
@@ -464,3 +480,13 @@ class stack(metaclass=singleton):
             self._redos.clear()
             self.docallback()
 
+    def savepoint(self):
+        ''' Set the savepoint. '''
+        self._savepoint = self.undocount()
+
+    def haschanged(self):
+        ''' Return *True* if the state has changed since the savepoint. 
+        
+        This will always return *True* if the savepoint has not been set.
+        '''
+        return self._savepoint is None or self._savepoint != self.undocount()

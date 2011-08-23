@@ -171,6 +171,27 @@ class Stack(TestCase):
         self.assertEqual(stack, ['item'])
         self.assertEqual(undo.stack()._undos, ['next item'])
 
+    def test_savepoint(self):
+        undo.stack()._undos = deque([1, 2])
+        self.assertTrue(undo.stack().haschanged())
+        undo.stack().savepoint()
+        self.assertFalse(undo.stack().haschanged())
+        undo.stack()._undos.pop()
+        self.assertTrue(undo.stack().haschanged())
+
+    def test_savepoint_clear(self):
+        undo.stack()._undos = deque()
+        self.assertTrue(undo.stack().haschanged())
+        undo.stack().savepoint()
+        self.assertFalse(undo.stack().haschanged())
+        undo.stack().clear()
+        self.assertTrue(undo.stack().haschanged())
+        undo.stack().savepoint()
+        self.assertFalse(undo.stack().haschanged())
+        undo.stack().clear()
+        self.assertTrue(undo.stack().haschanged())
+
+
 class TestSystem(TestCase):
     'A series of system tests'
 
