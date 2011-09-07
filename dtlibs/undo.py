@@ -332,7 +332,7 @@ def group(desc):
     ''' Return a context manager for grouping undoable actions. '''
     return _Group(desc)
 
-class stack(metaclass=singleton):
+class stack(metaclass=singleton()):
     ''' The main undo stack. 
     
     This is a singleton, so it can always be called as ``stack()``.
