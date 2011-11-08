@@ -30,7 +30,7 @@ Basic operation
 
 Undo commands are defined using :func:`undoable` as a decorator. The
 returned object has an *undo()* method, which should then be used
-to defined the undo operation. 
+to define the undo operation. 
 
 >>> @undoable('Add {pos}')
 ... def add(state, seq, item):
