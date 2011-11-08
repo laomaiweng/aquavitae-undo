@@ -322,3 +322,70 @@ class TestSystem(TestCase):
         undo.stack().undo()
         self.assertEqual(m.l, set())
         self.assertFalse(undo.stack().canundo())
+
+class TestExceptions(TestCase):
+
+    def setUp(self):
+        def action(state): pass
+        self.action = undo.undoable('', action, action)
+        self.calls = 0
+
+    def test_redo(self):
+        @undo.undoable('desc')
+        def add(state):
+            if self.calls == 0:
+                self.calls = 1
+            else:
+                raise TypeError
+
+        @add.undo
+        def add(state):
+            pass
+
+        self.action()
+        self.action()
+        add()
+        self.assertEqual(undo.stack().undocount(), 3)
+        undo.stack().undo()
+        self.assertEqual(undo.stack().undocount(), 2)
+        self.assertRaises(TypeError, undo.stack().redo)
+        self.assertEqual(undo.stack().undocount(), 0)
+        self.assertEqual(undo.stack().redocount(), 0)
+
+    def test_undo(self):
+        @undo.undoable('desc')
+        def add(state):
+            pass
+
+        @add.undo
+        def add(state):
+            if self.calls == 0:
+                self.calls = 1
+            else:
+                raise TypeError
+
+        self.action()
+        self.action()
+        add()
+        undo.stack().undo()
+        add()
+        self.assertEqual(undo.stack().undocount(), 3)
+        self.assertRaises(TypeError, undo.stack().undo)
+        self.assertEqual(undo.stack().undocount(), 0)
+        self.assertEqual(undo.stack().redocount(), 0)
+
+    def test_do(self):
+        @undo.undoable('desc')
+        def add(state):
+            raise TypeError
+
+        @add.undo
+        def add(state):
+            self.fail('Undo should not be called')
+
+        self.action()
+        self.action()
+        self.assertEqual(undo.stack().undocount(), 2)
+        self.assertRaises(TypeError, add)
+        self.assertEqual(undo.stack().undocount(), 2)
+

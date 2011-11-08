@@ -76,6 +76,12 @@ It can then be redone with :func:`stack.redo`.
 >>> sequence
 [1, 2, 3, 4, 5]
 
+:note:
+    If an exception is raised during the action, it is not added to the
+    stack and the exception is propagated. If an exception is raised 
+    during a redo or undo operation, the exception is propagated and the
+    stack is cleared.  
+     
 Nested actions
 ^^^^^^^^^^^^^^
 
@@ -282,8 +288,9 @@ def undoable(desc, do=None, undo=None):
     'kwargs' which correspond to the arguments passed to the *do* function.
     
     The description string can include formatting commands (see 
-    :ref:`Python's String Formatting <python:string-formatting>`), which are formatted using the state variable. 
-    This can be retrieved using ``stack().undotext()``
+    :ref:`Python's String Formatting <python:string-formatting>`), which 
+    are formatted using the state variable. This can be retrieved using 
+    ``stack().undotext()``
     
     >>> @undoable('description of {foo}')
     ... def do_foo(state):
