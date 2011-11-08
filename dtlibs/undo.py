@@ -76,11 +76,36 @@ It can then be redone with :func:`stack.redo`.
 >>> sequence
 [1, 2, 3, 4, 5]
 
-:note:
-    If an exception is raised during the action, it is not added to the
-    stack and the exception is propagated. If an exception is raised 
-    during a redo or undo operation, the exception is propagated and the
-    stack is cleared.  
+Return values and exceptions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The action may have a return value, but this will only be returned when
+it is first explicitly called. Subsequent redo or undo calls will ingore 
+this.
+
+>>> @undoable('Process')
+... def process(state, obj):
+...     obj[0] += 1
+...     state['obj'] = obj
+...     return obj
+...
+>>> @process.undo
+... def process(state):
+...     state['obj'][0] -=1
+...
+>>> obj = [1, 2]
+>>> process(obj)
+[2, 2]
+>>> print(obj)
+[2, 2]
+>>> stack().undo()
+>>> print(obj)
+[1, 2]
+
+If an exception is raised during the action, it is not added to the 
+stack and the exception is propagated. If an exception is raised 
+during a redo or undo operation, the exception is propagated and the
+stack is cleared.  
      
 Nested actions
 ^^^^^^^^^^^^^^
