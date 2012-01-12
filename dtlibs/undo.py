@@ -189,6 +189,7 @@ Members
 # also be used as a decorator on the *undo* function.
 
 import functools
+import contextlib
 
 from dtlibs.core import singleton, none
 from collections import deque
@@ -445,26 +446,28 @@ class stack(metaclass=singleton()):
         '''
         if self.canredo():
             undoable = self._redos.pop()
-            try:
-                undoable.do()
-            except:
-                self.clear()
-                raise
-            else:
-                self._undos.append(undoable)
+            with self._pausereceiver():
+                try:
+                    undoable.do()
+                except:
+                    self.clear()
+                    raise
+                else:
+                    self._undos.append(undoable)
             self.docallback()
 
     def undo(self):
         ''' Undo the last action. '''
         if self.canundo():
             undoable = self._undos.pop()
-            try:
-                undoable.undo()
-            except:
-                self.clear()
-                raise
-            else:
-                self._redos.append(undoable)
+            with self._pausereceiver():
+                try:
+                    undoable.undo()
+                except:
+                    self.clear()
+                    raise
+                else:
+                    self._redos.append(undoable)
             self.undocallback()
 
     def clear(self):
@@ -490,6 +493,13 @@ class stack(metaclass=singleton()):
         ''' Return a description of the next available redo. '''
         if self.canredo():
             return ('Redo ' + self._redos[-1].text()).strip()
+
+    @contextlib.contextmanager
+    def _pausereceiver(self):
+        ''' Return a contect manager which temporarily pauses the receiver. '''
+        self.setreceiver([])
+        yield
+        self.resetreceiver()
 
     def setreceiver(self, receiver=None):
         ''' Set an object to receiver commands pushed onto the stack.

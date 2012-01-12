@@ -323,6 +323,55 @@ class TestSystem(TestCase):
         self.assertEqual(m.l, set())
         self.assertFalse(undo.stack().canundo())
 
+class TestNested(TestCase):
+
+    def setUp(self):
+        # Test a complicated nested case
+        @undo.undoable('Add')
+        def add(state, seq, item):
+            seq.append(item)
+            state['seq'] = seq
+
+        @add.undo
+        def add(state):
+            delete(state['seq'])
+
+        @undo.undoable('Delete')
+        def delete(state, seq):
+            state['value'] = seq.pop()
+            state['seq'] = seq
+
+        @delete.undo
+        def delete(state):
+            add(state['seq'], state['value'])
+
+        self.add = add
+        self.delete = delete
+
+    def test1(self):
+        seq = [3, 6]
+        self.add(seq, 4)
+        self.assertEqual(seq, [3, 6, 4])
+        undo.stack().undo()
+        self.assertEqual(seq, [3, 6])
+        self.delete(seq)
+        self.assertEqual(seq, [3])
+        undo.stack().undo()
+        self.assertEqual(seq, [3, 6])
+
+    def test2(self):
+        seq = [3, 6]
+        self.add(seq, 4)
+        self.assertEqual(seq, [3, 6, 4])
+        undo.stack().undo()
+        self.assertEqual(seq, [3, 6])
+        undo.stack().redo()
+        self.assertEqual(seq, [3, 6, 4])
+        self.assertTrue(undo.stack().canundo())
+        undo.stack().undo()
+        self.assertFalse(undo.stack().canundo())
+
+
 class TestExceptions(TestCase):
 
     def setUp(self):
