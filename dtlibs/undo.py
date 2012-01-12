@@ -452,7 +452,7 @@ class stack(metaclass=singleton()):
                 raise
             else:
                 self._undos.append(undoable)
-                self.docallback()
+            self.docallback()
 
     def undo(self):
         ''' Undo the last action. '''
@@ -465,7 +465,7 @@ class stack(metaclass=singleton()):
                 raise
             else:
                 self._redos.append(undoable)
-                self.undocallback()
+            self.undocallback()
 
     def clear(self):
         ''' Clear the undo list. '''
