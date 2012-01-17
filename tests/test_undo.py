@@ -16,32 +16,31 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
-''' Test suite for undo '''
-
-import unittest
-from imp import reload
-from flexmock import flexmock
-
 from collections import deque
+from nose.tools import assert_raises
 
 from dtlibs import undo
 
-class TestCase(unittest.TestCase):
+class Base:
 
-    def tearDown(self):
-        reload(undo)
+    def teardown(self):
+        undo.stack().__init__()
 
-class Undoable(TestCase):
-    ''' Test the undoable function. '''
+class TestUndoable:
+    'Test the undoable function.'
 
     def setUp(self):
-        'Mock undo.stack() and store as self.stack'
+        #Mock undo.stack() to return a list, stored as self.stack
         self.stack = []
         mock_stack = lambda: self.stack
-        flexmock(undo).should_receive('stack').replace_with(mock_stack)
+        self.old_stack = undo.stack
+        undo.stack = mock_stack
+
+    def teardown(self):
+        undo.stack = self.old_stack
 
     def test_function(self):
-        'Function should run with basic arguments'
+        'undoable should run with basic arguments.'
         do = lambda state: None
         undo_ = lambda state: None
         undo.undoable('desc', do, undo_)
@@ -54,10 +53,10 @@ class Undoable(TestCase):
         @do.undo
         def do_undo(state):
             pass
-        self.assertIs(do, do_undo)
+        assert do is do_undo
 
     def test_do(self):
-        'undoable.do() runs'
+        'Make sure undoable.do() runs'
         self.do_called = False
         def do(state):
             self.do_called = True
@@ -65,10 +64,10 @@ class Undoable(TestCase):
             self.fail('Undo should not be called')
         undoable = undo.undoable('desc', do, undo_)
         undoable()
-        self.assertTrue(self.do_called)
+        assert self.do_called
 
     def test_undo(self):
-        'undoable.undo() runs'
+        'Make sure undoable.undo() runs'
         self.undo_called = False
         def do(state):
             pass
@@ -77,125 +76,135 @@ class Undoable(TestCase):
         undoable = undo.undoable('desc', do, undo_)
         undoable()
         self.stack[0].undo()
-        self.assertTrue(self.undo_called)
+        assert self.undo_called
 
 
-class _Action(TestCase):
+class Test_Action(Base):
 
     def test_state(self):
         'Make sure state is transferred'
         def do(state):
             state['done'] = True
         def undo_(state):
-            self.assertTrue(state['done'])
+            assert state['done']
             state['undone'] = True
         action = undo._Action({'do': do, 'undo': undo_},
                         {'args': tuple(), 'kwargs': {}})
         action.do()
-        self.assertEqual(action.state, {'args': tuple(), 'kwargs': {},
-                                        'done': True})
+        assert action.state == {'args': tuple(), 'kwargs': {}, 'done': True}
         action.undo()
-        self.assertEqual(action.state, {'args': tuple(), 'kwargs': {},
-                                        'done': True, 'undone': True})
+        assert action.state == {'args': tuple(), 'kwargs': {}, 'done': True,
+                                'undone': True}
 
     def test_text(self):
-        'description gets formatted with state'
+        'Test that description gets formatted with state'
         action = undo._Action({'text': 'desc - {foo}'}, {'foo': 'bar'})
-        self.assertEqual(action.text(), 'desc - bar')
+        assert action.text() == 'desc - bar'
 
 
-class Group(TestCase):
+class TestGroup(Base):
 
     def test_stack(self):
-        'Test the relationship with undo.stack()'
+        'Test that ``with group()`` diverts undo.stack()'
         undo.stack().clear()
         _Group = undo._Group('')
         stack = []
         _Group._stack = stack
-        flexmock(undo.stack()).should_call('setreceiver').with_args(stack).ordered
-        flexmock(undo.stack()).should_call('resetreceiver').with_args().ordered
-        flexmock(undo.stack()).should_call('append').with_args(_Group).ordered
+        assert undo.stack()._receiver == undo.stack()._undos
+        assert undo.stack().undocount() == 0
         with _Group:
-            pass
-        self.assertEqual(stack, [])
-        self.assertEqual(undo.stack()._undos, deque([_Group]))
+            assert undo.stack()._receiver == stack
+        assert undo.stack()._receiver == undo.stack()._undos
+        assert undo.stack().undocount() == 1
+        assert stack == []
+        assert undo.stack()._undos == deque([_Group])
 
 
-class Stack(TestCase):
+class TestStack(Base):
+
+    def setup(self):
+        # Create a mock action for use in tests
+        self.action = undo._Action({}, {})
+        self.action.undo = lambda: None
+        self.action.text = lambda: 'blah'
 
     def test_singleton(self):
         'undo.stack() always returns the same object'
-        self.assertIs(undo.stack(), undo.stack())
+        assert undo.stack() is undo.stack()
 
     def test_append(self):
+        'undo.stack().append adds actions to the undo queue.'
         undo.stack().append('one')
-        self.assertEqual(undo.stack()._undos, deque(['one']))
+        assert undo.stack()._undos == deque(['one'])
 
     def test_undo_changes_stacks(self):
-        undoable = flexmock(undo._Action({}, {})).should_receive('undo').mock
-        undo.stack()._undos = deque([1, 2, undoable])
+        'Calling undo updates both the undos and redos stacks.'
+        undo.stack()._undos = deque([1, 2, self.action])
         undo.stack()._redos = deque([4, 5, 6])
         undo.stack().undo()
-        self.assertEqual(undo.stack()._undos, deque([1, 2]))
-        self.assertEqual(undo.stack()._redos, deque([4, 5, 6, undoable]))
+        assert undo.stack()._undos == deque([1, 2])
+        assert undo.stack()._redos == deque([4, 5, 6, self.action])
 
     def test_undo_resets_redos(self):
+        'Calling undo clears any available redos.'
         undo.stack()._undos = deque([1, 2, 3])
         undo.stack()._redos = deque([4, 5, 6])
         undo.stack()._receiver = undo.stack()._undos
         undo.stack().append(7)
-        self.assertEqual(undo.stack()._undos, deque([1, 2, 3, 7]))
-        self.assertEqual(undo.stack()._redos, deque([]))
+        assert undo.stack()._undos == deque([1, 2, 3, 7])
+        assert undo.stack()._redos == deque([])
 
     def test_undotext(self):
-        action = flexmock(undo._Action({}, {})).should_receive(
-                                              'text').and_return('blah').mock
-        undo.stack()._undos = [action]
-        self.assertEqual(undo.stack().undotext(), 'Undo blah')
+        'undo.stack().undotext() returns a description of the undo available.'
+        undo.stack()._undos = [self.action]
+        assert undo.stack().undotext() == 'Undo blah'
 
     def test_redotext(self):
-        action = flexmock(undo._Action({}, {})).should_receive(
-                                              'text').and_return('blah').mock
-        undo.stack()._redos = [action]
-        self.assertEqual(undo.stack().redotext(), 'Redo blah')
+        'undo.stack().redotext() returns a description of the redo available.'
+        undo.stack()._redos = [self.action]
+        assert undo.stack().redotext() == 'Redo blah'
 
     def test_receiver(self):
+        'Test that setreceiver and resetreceiver behave correctly.'
         stack = []
         undo.stack()._undos = []
         undo.stack().setreceiver(stack)
         undo.stack().append('item')
-        self.assertEqual(stack, ['item'])
-        self.assertEqual(undo.stack()._undos, [])
+        assert stack == ['item']
+        assert undo.stack()._undos == []
         undo.stack().resetreceiver()
         undo.stack().append('next item')
-        self.assertEqual(stack, ['item'])
-        self.assertEqual(undo.stack()._undos, ['next item'])
+        assert stack == ['item']
+        assert undo.stack()._undos == ['next item']
 
     def test_savepoint(self):
+        'Test that savepoint behaves correctly.'
         undo.stack()._undos = deque([1, 2])
-        self.assertTrue(undo.stack().haschanged())
+        assert undo.stack().haschanged()
         undo.stack().savepoint()
-        self.assertFalse(undo.stack().haschanged())
+        assert not undo.stack().haschanged()
         undo.stack()._undos.pop()
-        self.assertTrue(undo.stack().haschanged())
+        assert undo.stack().haschanged()
 
     def test_savepoint_clear(self):
+        'Check that clearing the stack resets the savepoint.'
         undo.stack()._undos = deque()
-        self.assertTrue(undo.stack().haschanged())
+        assert undo.stack().haschanged()
         undo.stack().savepoint()
-        self.assertFalse(undo.stack().haschanged())
+        assert not undo.stack().haschanged()
         undo.stack().clear()
-        self.assertTrue(undo.stack().haschanged())
+        assert undo.stack().haschanged()
         undo.stack().savepoint()
-        self.assertFalse(undo.stack().haschanged())
+        assert not undo.stack().haschanged()
         undo.stack().clear()
-        self.assertTrue(undo.stack().haschanged())
+        assert undo.stack().haschanged()
 
 
-class TestSystem(TestCase):
+class TestSystem(Base):
     'A series of system tests'
 
-    def test1(self):
+    def test_common(self):
+        'Test some common useage.'
         @undo.undoable('add @{pos} to {seq}')
         def add(state, seq, item):
             seq.append(item)
@@ -207,15 +216,15 @@ class TestSystem(TestCase):
             del seq[pos]
         sequence = [1, 2, 3, 4]
         add(sequence, 5)
-        self.assertEqual(sequence, [1, 2, 3, 4, 5])
-        self.assertEqual(undo.stack().undotext(), 'Undo add @4 to [1, 2, 3, 4, 5]')
+        assert sequence == [1, 2, 3, 4, 5]
+        assert undo.stack().undotext() == 'Undo add @4 to [1, 2, 3, 4, 5]'
         undo.stack().undo()
-        self.assertEqual(sequence, [1, 2, 3, 4])
+        assert sequence == [1, 2, 3, 4]
         undo.stack().redo()
-        self.assertEqual(sequence, [1, 2, 3, 4, 5])
+        assert sequence == [1, 2, 3, 4, 5]
 
-    def test2(self):
-        'Bound functions'
+    def test_bound1(self):
+        'Test bound functions'
         class List:
             def __init__(self):
                 self._l = []
@@ -230,60 +239,20 @@ class TestSystem(TestCase):
 
         l = List()
         l.add(5)
-        self.assertEqual(l._l, [5])
+        assert l._l == [5]
         l.add(3)
-        self.assertEqual(l._l, [5, 3])
+        assert l._l == [5, 3]
         l.add(5)
-        self.assertEqual(l._l, [5, 3, 5])
+        assert l._l == [5, 3, 5]
         undo.stack().undo()
-        self.assertEqual(l._l, [5, 3])
+        assert l._l == [5, 3]
         undo.stack().undo()
-        self.assertEqual(l._l, [5])
+        assert l._l == [5]
         undo.stack().undo()
-        self.assertEqual(l._l, [])
+        assert l._l == []
 
-    def testGroups1(self):
-        'Test _Group behaviour'
-        @undo.undoable('add @{pos} to {seq}')
-        def add(state, seq, item):
-            seq.append(item)
-            state['seq'] = seq
-            state['pos'] = len(seq) - 1
-        @add.undo
-        def add(state):
-            seq, pos = state['seq'], state['pos']
-            del seq[pos]
-        sequence = [1, 2]
-        with undo._Group('add many'):
-            for i in range(5, 8):
-                add(sequence, i)
-        self.assertEqual(sequence, [1, 2, 5, 6, 7])
-        self.assertEqual(undo.stack().undotext(), 'Undo add many')
-        undo.stack().undo()
-        self.assertEqual(sequence, [1, 2])
-        self.assertEqual(undo.stack().redotext(), 'Redo add many')
-        undo.stack().redo()
-        self.assertEqual(sequence, [1, 2, 5, 6, 7])
-        self.assertEqual(undo.stack().undotext(), 'Undo add many')
-
-    def test_groups2(self):
-        @undo.undoable('Add 1 item')
-        def add(state, seq, item):
-            seq.append(item)
-            state['seq'] = seq
-        @add.undo
-        def add(state):
-            state['seq'].pop()
-        seq = []
-        with undo._Group('Add many'):
-            for item in [4, 6, 8]:
-                add(seq, item)
-        self.assertEqual(seq, [4, 6, 8])
-        self.assertEqual(undo.stack().undocount(), 1)
-        undo.stack().undo()
-        self.assertEqual(seq, [])
-
-    def testBound(self):
+    def test_bound2(self):
+        'Test more bound functions'
         class Mod:
             def __init__(self):
                 self.l = set()
@@ -307,23 +276,67 @@ class TestSystem(TestCase):
                 self.l.add(state['value'])
 
         m = Mod()
-        self.assertEqual(m.l, set())
+        assert m.l == set()
         m.add(3)
         m.add(4)
-        self.assertEqual(m.l, set([3, 4]))
-        self.assertEqual(undo.stack().undotext(), 'Undo Add 4')
+        assert m.l == set([3, 4])
+        assert undo.stack().undotext() == 'Undo Add 4'
         undo.stack().undo()
-        self.assertEqual(m.l, set([3]))
+        assert m.l == set([3])
         m.delete(3)
-        self.assertEqual(m.l, set())
+        assert m.l == set()
         undo.stack().undo()
-        self.assertEqual(m.l, set([3]))
-        self.assertTrue(undo.stack().canundo())
+        assert m.l == set([3])
+        assert undo.stack().canundo()
         undo.stack().undo()
-        self.assertEqual(m.l, set())
-        self.assertFalse(undo.stack().canundo())
+        assert m.l == set()
+        assert not undo.stack().canundo()
 
-class TestNested(TestCase):
+    def test_groups1(self):
+        'Test _Group behaviour'
+        @undo.undoable('add @{pos} to {seq}')
+        def add(state, seq, item):
+            seq.append(item)
+            state['seq'] = seq
+            state['pos'] = len(seq) - 1
+        @add.undo
+        def add(state):
+            seq, pos = state['seq'], state['pos']
+            del seq[pos]
+        sequence = [1, 2]
+        with undo._Group('add many'):
+            for i in range(5, 8):
+                add(sequence, i)
+        assert sequence == [1, 2, 5, 6, 7]
+        assert undo.stack().undotext() == 'Undo add many'
+        undo.stack().undo()
+        assert sequence, [1, 2]
+        assert undo.stack().redotext() == 'Redo add many'
+        undo.stack().redo()
+        assert sequence, [1, 2, 5, 6, 7]
+        assert undo.stack().undotext() == 'Undo add many'
+
+    def test_groups2(self):
+        'Test more _Group behaviour.'
+        @undo.undoable('Add 1 item')
+        def add(state, seq, item):
+            seq.append(item)
+            state['seq'] = seq
+        @add.undo
+        def add(state):
+            state['seq'].pop()
+        seq = []
+        with undo._Group('Add many'):
+            for item in [4, 6, 8]:
+                add(seq, item)
+        assert seq, [4, 6, 8]
+        assert undo.stack().undocount() == 1
+        undo.stack().undo()
+        assert seq == []
+
+
+class TestNested(Base):
+    'Test nested actions'
 
     def setUp(self):
         # Test a complicated nested case
@@ -351,35 +364,37 @@ class TestNested(TestCase):
     def test1(self):
         seq = [3, 6]
         self.add(seq, 4)
-        self.assertEqual(seq, [3, 6, 4])
+        assert seq == [3, 6, 4]
         undo.stack().undo()
-        self.assertEqual(seq, [3, 6])
+        assert seq == [3, 6]
         self.delete(seq)
-        self.assertEqual(seq, [3])
+        assert seq == [3]
         undo.stack().undo()
-        self.assertEqual(seq, [3, 6])
+        assert seq == [3, 6]
 
     def test2(self):
         seq = [3, 6]
         self.add(seq, 4)
-        self.assertEqual(seq, [3, 6, 4])
+        assert seq == [3, 6, 4]
         undo.stack().undo()
-        self.assertEqual(seq, [3, 6])
+        assert seq == [3, 6]
         undo.stack().redo()
-        self.assertEqual(seq, [3, 6, 4])
-        self.assertTrue(undo.stack().canundo())
+        assert seq == [3, 6, 4]
+        assert undo.stack().canundo()
         undo.stack().undo()
-        self.assertFalse(undo.stack().canundo())
+        assert not undo.stack().canundo()
 
 
-class TestExceptions(TestCase):
+class TestExceptions(Base):
+    'Test how exceptions within actions are handled.'
 
-    def setUp(self):
+    def setup(self):
         def action(state): pass
         self.action = undo.undoable('', action, action)
         self.calls = 0
 
     def test_redo(self):
+        'Test for an exception in the redo function.'
         @undo.undoable('desc')
         def add(state):
             if self.calls == 0:
@@ -394,14 +409,15 @@ class TestExceptions(TestCase):
         self.action()
         self.action()
         add()
-        self.assertEqual(undo.stack().undocount(), 3)
+        assert undo.stack().undocount() == 3
         undo.stack().undo()
-        self.assertEqual(undo.stack().undocount(), 2)
-        self.assertRaises(TypeError, undo.stack().redo)
-        self.assertEqual(undo.stack().undocount(), 0)
-        self.assertEqual(undo.stack().redocount(), 0)
+        assert undo.stack().undocount() == 2
+        assert_raises(TypeError, undo.stack().redo)
+        assert undo.stack().undocount() == 0
+        assert undo.stack().redocount() == 0
 
     def test_undo(self):
+        'Test for an exception in the undo function.'
         @undo.undoable('desc')
         def add(state):
             pass
@@ -418,12 +434,13 @@ class TestExceptions(TestCase):
         add()
         undo.stack().undo()
         add()
-        self.assertEqual(undo.stack().undocount(), 3)
-        self.assertRaises(TypeError, undo.stack().undo)
-        self.assertEqual(undo.stack().undocount(), 0)
-        self.assertEqual(undo.stack().redocount(), 0)
+        assert undo.stack().undocount() == 3
+        assert_raises(TypeError, undo.stack().undo)
+        assert undo.stack().undocount() == 0
+        assert undo.stack().redocount() == 0
 
     def test_do(self):
+        'Test for an exception in the initial function call.'
         @undo.undoable('desc')
         def add(state):
             raise TypeError
@@ -434,7 +451,7 @@ class TestExceptions(TestCase):
 
         self.action()
         self.action()
-        self.assertEqual(undo.stack().undocount(), 2)
-        self.assertRaises(TypeError, add)
-        self.assertEqual(undo.stack().undocount(), 2)
+        assert undo.stack().undocount() == 2
+        assert_raises(TypeError, add)
+        assert undo.stack().undocount() == 2
 
