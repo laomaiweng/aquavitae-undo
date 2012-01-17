@@ -475,6 +475,7 @@ class stack(metaclass=singleton()):
         self._undos.clear()
         self._redos.clear()
         self._savepoint = None
+        self._receiver = self._undos
 
     def undocount(self):
         ''' Return the number of undos available. '''
