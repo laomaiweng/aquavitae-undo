@@ -20,24 +20,27 @@ from collections import deque
 from nose.tools import assert_raises
 
 from dtlibs import undo
+from dtlibs.mock import saver
 
-class Base:
+class TestCase:
+
+    def setup(self):
+        pass
 
     def teardown(self):
         undo.stack().__init__()
+        saver.restore()
 
-class TestUndoable:
+class TestUndoable(TestCase):
     'Test the undoable function.'
 
-    def setUp(self):
+    def setup(self):
         #Mock undo.stack() to return a list, stored as self.stack
         self.stack = []
+        saver(undo, 'stack')
         mock_stack = lambda: self.stack
-        self.old_stack = undo.stack
         undo.stack = mock_stack
-
-    def teardown(self):
-        undo.stack = self.old_stack
+        super().setup()
 
     def test_function(self):
         'undoable should run with basic arguments.'
@@ -79,7 +82,7 @@ class TestUndoable:
         assert self.undo_called
 
 
-class Test_Action(Base):
+class Test_Action(TestCase):
 
     def test_state(self):
         'Make sure state is transferred'
@@ -102,7 +105,7 @@ class Test_Action(Base):
         assert action.text() == 'desc - bar'
 
 
-class TestGroup(Base):
+class TestGroup(TestCase):
 
     def test_stack(self):
         'Test that ``with group()`` diverts undo.stack()'
@@ -120,13 +123,14 @@ class TestGroup(Base):
         assert undo.stack()._undos == deque([_Group])
 
 
-class TestStack(Base):
+class TestStack(TestCase):
 
     def setup(self):
         # Create a mock action for use in tests
         self.action = undo._Action({}, {})
         self.action.undo = lambda: None
         self.action.text = lambda: 'blah'
+        super().setup()
 
     def test_singleton(self):
         'undo.stack() always returns the same object'
@@ -200,7 +204,7 @@ class TestStack(Base):
         assert undo.stack().haschanged()
 
 
-class TestSystem(Base):
+class TestSystem(TestCase):
     'A series of system tests'
 
     def test_common(self):
@@ -335,10 +339,10 @@ class TestSystem(Base):
         assert seq == []
 
 
-class TestNested(Base):
+class TestNested(TestCase):
     'Test nested actions'
 
-    def setUp(self):
+    def setup(self):
         # Test a complicated nested case
         @undo.undoable('Add')
         def add(state, seq, item):
@@ -360,6 +364,7 @@ class TestNested(Base):
 
         self.add = add
         self.delete = delete
+        super().setup()
 
     def test1(self):
         seq = [3, 6]
@@ -385,13 +390,14 @@ class TestNested(Base):
         assert not undo.stack().canundo()
 
 
-class TestExceptions(Base):
+class TestExceptions(TestCase):
     'Test how exceptions within actions are handled.'
 
     def setup(self):
         def action(state): pass
         self.action = undo.undoable('', action, action)
         self.calls = 0
+        super().setup()
 
     def test_redo(self):
         'Test for an exception in the redo function.'
@@ -451,7 +457,7 @@ class TestExceptions(Base):
 
         self.action()
         self.action()
-        assert undo.stack().undocount() == 2
+        assert undo.stack().undocount() == 2, undo.stack().undocount()
         assert_raises(TypeError, add)
         assert undo.stack().undocount() == 2
 
