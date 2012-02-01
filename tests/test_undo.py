@@ -122,6 +122,10 @@ class TestGroup(TestCase):
         assert stack == []
         assert undo.stack()._undos == deque([_Group])
 
+    def test_group(self):
+        'Test that ``group()`` returns a context manager.'
+        with undo.group('desc'):
+            pass
 
 class TestStack(TestCase):
 
