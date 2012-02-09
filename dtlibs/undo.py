@@ -183,8 +183,7 @@ A series of commands may be grouped within a function using the
     >>> @undoable
     ... def add(seq, item):
     ...     seq.append(item)
-    ...     state['seq'] = seq
-    ...     state['pos'] = len(seq) - 1
+    ...     pos = len(seq) - 1
     ...     yield 'Add item'
     ...     del seq[pos]
     ...
@@ -192,11 +191,11 @@ A series of commands may be grouped within a function using the
     >>> add(seq, 4)
     >>> seq
     [1, 2, 3, 4]
-    >>> stack.undotext()
-    'Add item'
+    >>> stack().undotext()
+    'Undo Add item'
     >>> stack().undo()
     >>> seq
-    [1, 2, 3, 4]
+    [1, 2, 3]
 
 Members
 -------

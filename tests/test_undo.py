@@ -121,6 +121,14 @@ class TestGenerator(TestCase):
         self.stack[0].undo()
         assert self.undo_called
 
+    def test_text(self):
+        'Mare sure the undo text is set.'
+        @undo.undoable
+        def do():
+            yield 'text'
+        do()
+        assert self.stack[0].text() == 'text'
+
 
 class Test_Action(TestCase):
 
