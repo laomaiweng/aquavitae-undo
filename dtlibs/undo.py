@@ -176,6 +176,28 @@ A series of commands may be grouped within a function using the
 >>> seq
 []
 
+.. versionadded:: 0.4.2
+    An `undoable` may also be constructed as a generator which yields one
+    value, the undo text.
+    
+    >>> @undoable
+    ... def add(seq, item):
+    ...     seq.append(item)
+    ...     state['seq'] = seq
+    ...     state['pos'] = len(seq) - 1
+    ...     yield 'Add item'
+    ...     del seq[pos]
+    ...
+    >>> seq = [1, 2, 3]
+    >>> add(seq, 4)
+    >>> seq
+    [1, 2, 3, 4]
+    >>> stack.undotext()
+    'Add item'
+    >>> stack().undo()
+    >>> seq
+    [1, 2, 3, 4]
+
 Members
 -------
 '''
@@ -191,7 +213,7 @@ Members
 import functools
 import contextlib
 
-from dtlibs.core import singleton, none
+from dtlibs.core import singleton, none, iscallable
 from collections import deque
 
 class _Action:
@@ -282,6 +304,59 @@ class _ActionFactory:
             return ret
 
 
+class _GeneratorActionFactory:
+    '''A generator-style action factory. 
+    
+    *desc* is not set until the method is called, which is fine since it 
+    is not needed until that point.
+    '''
+    def __init__(self, generator):
+        self._generator = generator
+        self._desc = ''
+        self._instance = None
+
+    def __get__(self, instance, owner):
+        'Store instance for bound methods.'
+        self._instance = instance
+        return self
+
+    def _text(self):
+        return self._desc
+
+    def _do(self, state, *args, **kwargs):
+        ''' Create an instance of the generator and call it.
+        
+        *state* is ignored here and may be removed later.
+        '''
+        self._runner = self._generator(*args, **kwargs)
+        self._desc = next(self._runner)
+
+    def _undo(self, state):
+        ''' call the next iteration of the generator.
+
+        *state* is ignored here and may be removed later.
+        '''
+        try:
+            next(self._runner)
+        except StopIteration:
+            pass
+
+    def __call__(self, *args, **kwargs):
+        ''' Create the action.
+         
+        This will create an _Action, run it, set *desc*, and push the 
+        action onto the stack.
+        '''
+        assert None not in [self._do, self._undo]
+        state = {'args': args, 'kwargs': kwargs}
+        vars = {'text': self._text, 'instance': self._instance,
+                'do': self._do, 'undo': self._undo}
+        action = _Action(vars, state)
+        ret = action.do()
+        stack().append(action)
+        return ret
+
+
 def undoable(desc, do=None, undo=None):
     ''' Factory to create a new undoable action type. 
     
@@ -328,7 +403,10 @@ def undoable(desc, do=None, undo=None):
     >>> stack().undotext()
     'Undo description of bar'
     '''
-    factory = _ActionFactory(desc, do, undo)
+    if iscallable(desc):
+        factory = _GeneratorActionFactory(desc)
+    else:
+        factory = _ActionFactory(desc, do, undo)
     functools.update_wrapper(factory, do)
     return factory
 

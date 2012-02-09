@@ -82,6 +82,46 @@ class TestUndoable(TestCase):
         assert self.undo_called
 
 
+class TestGenerator(TestCase):
+    'Test undable as a generator.'
+
+    def setup(self):
+        #Mock undo.stack() to return a list, stored as self.stack
+        self.stack = []
+        saver(undo, 'stack')
+        mock_stack = lambda: self.stack
+        undo.stack = mock_stack
+        super().setup()
+
+    def test_function(self):
+        'undoable should create a generator action with no arguments.'
+        @undo.undoable
+        def do():
+            yield
+
+    def test_do(self):
+        'Make sure undoable.do() runs'
+        self.do_called = False
+        @undo.undoable
+        def do():
+            self.do_called = True
+            yield
+            self.fail('Undo should not be called')
+        do()
+        assert self.do_called
+
+    def test_undo(self):
+        'Make sure undoable.undo() runs'
+        self.undo_called = False
+        @undo.undoable
+        def do():
+            yield
+            self.undo_called = True
+        do()
+        self.stack[0].undo()
+        assert self.undo_called
+
+
 class Test_Action(TestCase):
 
     def test_state(self):
@@ -211,8 +251,7 @@ class TestStack(TestCase):
 class TestSystem(TestCase):
     'A series of system tests'
 
-    def test_common(self):
-        'Test some common useage.'
+    def setup_common(self):
         @undo.undoable('add @{pos} to {seq}')
         def add(state, seq, item):
             seq.append(item)
@@ -222,6 +261,11 @@ class TestSystem(TestCase):
         def add(state):
             seq, pos = state['seq'], state['pos']
             del seq[pos]
+        return add
+
+    def test_common(self):
+        'Test some common useage.'
+        add = self.setup_common()
         sequence = [1, 2, 3, 4]
         add(sequence, 5)
         assert sequence == [1, 2, 3, 4, 5]
@@ -231,8 +275,7 @@ class TestSystem(TestCase):
         undo.stack().redo()
         assert sequence == [1, 2, 3, 4, 5]
 
-    def test_bound1(self):
-        'Test bound functions'
+    def setup_bound1(self):
         class List:
             def __init__(self):
                 self._l = []
@@ -244,7 +287,11 @@ class TestSystem(TestCase):
             @add.undo
             def add(self, state):
                 self._l.pop()
+        return List
 
+    def test_bound1(self):
+        'Test bound functions'
+        List = self.setup_bound1()
         l = List()
         l.add(5)
         assert l._l == [5]
@@ -259,8 +306,7 @@ class TestSystem(TestCase):
         undo.stack().undo()
         assert l._l == []
 
-    def test_bound2(self):
-        'Test more bound functions'
+    def setup_bound2(self):
         class Mod:
             def __init__(self):
                 self.l = set()
@@ -283,6 +329,11 @@ class TestSystem(TestCase):
             def delete(self, state):
                 self.l.add(state['value'])
 
+        return Mod
+
+    def test_bound2(self):
+        'Test more bound functions'
+        Mod = self.setup_bound2()
         m = Mod()
         assert m.l == set()
         m.add(3)
@@ -300,8 +351,7 @@ class TestSystem(TestCase):
         assert m.l == set()
         assert not undo.stack().canundo()
 
-    def test_groups1(self):
-        'Test _Group behaviour'
+    def setup_groups1(self):
         @undo.undoable('add @{pos} to {seq}')
         def add(state, seq, item):
             seq.append(item)
@@ -311,6 +361,11 @@ class TestSystem(TestCase):
         def add(state):
             seq, pos = state['seq'], state['pos']
             del seq[pos]
+        return add
+
+    def test_groups1(self):
+        'Test _Group behaviour'
+        add = self.setup_groups1()
         sequence = [1, 2]
         with undo._Group('add many'):
             for i in range(5, 8):
@@ -324,8 +379,7 @@ class TestSystem(TestCase):
         assert sequence, [1, 2, 5, 6, 7]
         assert undo.stack().undotext() == 'Undo add many'
 
-    def test_groups2(self):
-        'Test more _Group behaviour.'
+    def setup_groups2(self):
         @undo.undoable('Add 1 item')
         def add(state, seq, item):
             seq.append(item)
@@ -333,6 +387,11 @@ class TestSystem(TestCase):
         @add.undo
         def add(state):
             state['seq'].pop()
+        return add
+
+    def test_groups2(self):
+        'Test more _Group behaviour.'
+        add = self.setup_groups2()
         seq = []
         with undo._Group('Add many'):
             for item in [4, 6, 8]:
@@ -403,8 +462,7 @@ class TestExceptions(TestCase):
         self.calls = 0
         super().setup()
 
-    def test_redo(self):
-        'Test for an exception in the redo function.'
+    def setup_redo(self):
         @undo.undoable('desc')
         def add(state):
             if self.calls == 0:
@@ -415,7 +473,11 @@ class TestExceptions(TestCase):
         @add.undo
         def add(state):
             pass
+        return add
 
+    def test_redo(self):
+        'Test for an exception in the redo function.'
+        add = self.setup_redo()
         self.action()
         self.action()
         add()
@@ -426,8 +488,7 @@ class TestExceptions(TestCase):
         assert undo.stack().undocount() == 0
         assert undo.stack().redocount() == 0
 
-    def test_undo(self):
-        'Test for an exception in the undo function.'
+    def setup_undo(self):
         @undo.undoable('desc')
         def add(state):
             pass
@@ -439,6 +500,11 @@ class TestExceptions(TestCase):
             else:
                 raise TypeError
 
+        return add
+
+    def test_undo(self):
+        'Test for an exception in the undo function.'
+        add = self.setup_undo()
         self.action()
         self.action()
         add()
@@ -449,8 +515,7 @@ class TestExceptions(TestCase):
         assert undo.stack().undocount() == 0
         assert undo.stack().redocount() == 0
 
-    def test_do(self):
-        'Test for an exception in the initial function call.'
+    def setup_do(self):
         @undo.undoable('desc')
         def add(state):
             raise TypeError
@@ -458,10 +523,139 @@ class TestExceptions(TestCase):
         @add.undo
         def add(state):
             self.fail('Undo should not be called')
+        return add
 
+    def test_do(self):
+        'Test for an exception in the initial function call.'
+        add = self.setup_do()
         self.action()
         self.action()
         assert undo.stack().undocount() == 2, undo.stack().undocount()
         assert_raises(TypeError, add)
         assert undo.stack().undocount() == 2
+
+
+
+class TestGeneratorSystem(TestCase):
+    'A series of system tests'
+
+    def setup_common(self):
+        @undo.undoable
+        def add(seq, item):
+            seq.append(item)
+            pos = len(seq) - 1
+            yield 'add @{pos} to {seq}'.format(pos, seq)
+            del seq[pos]
+        return add
+
+    def setup_bound1(self):
+        class List:
+            def __init__(self):
+                self._l = []
+
+            @undo.undoable
+            def add(self, item):
+                self._l.append(item)
+                yield 'Add an item'
+                self._l.pop()
+        return List
+
+    def setup_bound2(self):
+        class Mod:
+            def __init__(self):
+                self.l = set()
+
+            @undo.undoable
+            def add(self, value):
+                self.l.add(value)
+                yield 'Add {value}'
+                self.l.remove(value)
+
+            @undo.undoable
+            def delete(self, value):
+                self.l.remove(value)
+                yield 'Delete {value}'
+                self.l.add(value)
+
+        return Mod
+
+    def setup_groups1(self):
+        @undo.undoable
+        def add(state, seq, item):
+            seq.append(item)
+            pos = len(seq) - 1
+            yield 'add @{pos} to {seq}'
+            del seq[pos]
+        return add
+
+    def setup_groups2(self):
+        @undo.undoable()
+        def add(state, seq, item):
+            seq.append(item)
+            yield 'Add 1 item'
+            seq.pop()
+        return add
+
+
+class TestGeneratorNested(TestCase):
+    'Test nested actions'
+
+    def setup(self):
+        # Test a complicated nested case
+        @undo.undoable
+        def add(seq, item):
+            seq.append(item)
+            yield 'Add'
+            delete(seq)
+
+        @undo.undoable
+        def delete(seq):
+            value = seq.pop()
+            yield 'Delete'
+            add(seq, value)
+
+        self.add = add
+        self.delete = delete
+        super().setup()
+
+
+class TestGeneratorExceptions(TestCase):
+    'Test how exceptions within actions are handled.'
+
+    def setup(self):
+        super().setup()
+        @undo.undoable
+        def action():
+            yield
+        self.action = action
+        self.calls = 0
+
+    def setup_redo(self):
+        @undo.undoable
+        def add():
+            if self.calls == 0:
+                self.calls = 1
+            else:
+                raise TypeError
+            yield 'desc'
+        return add
+
+    def test_undo(self):
+        @undo.undoable
+        def add():
+            yield 'desc'
+            if self.calls == 0:
+                self.calls = 1
+            else:
+                raise TypeError
+
+        return add
+
+    def setup_do(self):
+        @undo.undoable
+        def add(state):
+            raise TypeError
+            yield 'desc'
+            self.fail('Undo should not be called')
+        return add
 
