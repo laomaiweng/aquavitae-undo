@@ -101,7 +101,7 @@ class Test_Action(TestCase):
 
     def test_text(self):
         'Test that description gets formatted with state'
-        action = undo._Action({'text': 'desc - {foo}'}, {'foo': 'bar'})
+        action = undo._Action({'text': lambda: 'desc - {foo}'}, {'foo': 'bar'})
         assert action.text() == 'desc - bar'
 
 

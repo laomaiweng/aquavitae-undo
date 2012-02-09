@@ -224,7 +224,7 @@ class _Action:
 
     def text(self):
         'Return the descriptive text of the action'
-        return self.vars['text'].format(**self.state)
+        return self.vars['text']().format(**self.state)
 
 
 class _ActionFactory:
@@ -235,7 +235,7 @@ class _ActionFactory:
     creates a new instance of an _Action, runs it and pushes it onto the stack.
     '''
     def __init__(self, desc, do, undo):
-        self._desc = desc
+        self._desc = lambda: desc
         self._do = do
         self._undo = undo
         self._instance = None
