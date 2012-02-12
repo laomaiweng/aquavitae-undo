@@ -19,7 +19,7 @@
 from collections import deque
 from nose.tools import assert_raises
 
-from dtlibs import undo
+from dtlibs import undo, core
 from dtlibs.mock import saver
 
 class TestCase:
@@ -83,7 +83,7 @@ class TestUndoable(TestCase):
 
 
 class TestGenerator(TestCase):
-    'Test undable as a generator.'
+    'Test undoble as a generator.'
 
     def setup(self):
         #Mock undo.stack() to return a list, stored as self.stack
@@ -129,8 +129,20 @@ class TestGenerator(TestCase):
         do()
         assert self.stack[0].text() == 'text'
 
+    def test_method(self):
+        'Test that arguments are passed correctly to methods.'
+        class A:
+            @undo.undoable
+            def f(self, arg1, arg2):
+                assert isinstance(self, A)
+                assert arg1 == 1
+                assert arg2 == 2
+                yield
+        a = A()
+        a.f(1, 2)
 
-class Test_Action(TestCase):
+
+class TestActionFactory(TestCase):
 
     def test_state(self):
         'Make sure state is transferred'
@@ -138,19 +150,17 @@ class Test_Action(TestCase):
             state['done'] = True
         def undo_(state):
             assert state['done']
-            state['undone'] = True
-        action = undo._Action({'do': do, 'undo': undo_},
-                        {'args': tuple(), 'kwargs': {}})
-        action.do()
-        assert action.state == {'args': tuple(), 'kwargs': {}, 'done': True}
-        action.undo()
-        assert action.state == {'args': tuple(), 'kwargs': {}, 'done': True,
-                                'undone': True}
+        action = undo._ActionFactory('', do, undo_)
+        action()
+        undo.stack().undo()
 
     def test_text(self):
         'Test that description gets formatted with state'
-        action = undo._Action({'text': lambda: 'desc - {foo}'}, {'foo': 'bar'})
-        assert action.text() == 'desc - bar'
+        def do(state):
+            state['foo'] = 'bar'
+        action = undo._ActionFactory('desc - {foo}', do, lambda: None)
+        action()
+        assert undo.stack().undotext() == 'Undo desc - bar', undo.stack().undotext()
 
 
 class TestGroup(TestCase):
@@ -179,7 +189,7 @@ class TestStack(TestCase):
 
     def setup(self):
         # Create a mock action for use in tests
-        self.action = undo._Action({}, {})
+        self.action = undo._Action('', core.none, core.none)
         self.action.undo = lambda: None
         self.action.text = lambda: 'blah'
         super().setup()

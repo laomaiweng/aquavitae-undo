@@ -17,189 +17,6 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
-'''
-This is an undo/redo framework which uses a undoable stack to track 
-actions.  Commands are defined using decorators on functions and methods, 
-and a new instance is added to the stack when the function is called.  
-
-Usage
--------
-
-Basic operation
-^^^^^^^^^^^^^^^
-
-Undo commands are defined using :func:`undoable` as a decorator. The
-returned object has an *undo()* method, which should then be used
-to define the undo operation. 
-
->>> @undoable('Add {pos}')
-... def add(state, seq, item):
-...     seq.append(item)
-...     state['seq'] = seq
-...     state['pos'] = len(seq) - 1
-... 
->>> @add.undo
-... def add(state):
-...     seq, pos = state['seq'], state['pos']
-...     del seq[pos]
-
-As can be seen from this, a common argument, *state*, is used to transfer 
-data between the functions. The exposed signature of *add*, however is
-``add(seq, item)``. *state* is a dict in which data may be stored as 
-required to undo the operation. It is also used to format the description of
-the operation as returned by :func:`stack.undotext` and 
-:func:`stack.redotext`.
-
-*add* now acts as a normal function.
-
->>> sequence = [1, 2, 3, 4]
->>> add(sequence, 5)
->>> sequence
-[1, 2, 3, 4, 5]
-
-However, in the background, when it is called, an instance of the action is
-stored in `stack` and its description can be queried using 
-:func:`stack.undotext`.
-
->>> stack().undotext()
-'Undo Add 4'
-
-The action can be undone using :func:`stack.undo`.
-
->>> stack().undo()
->>> sequence
-[1, 2, 3, 4]
-
-It can then be redone with :func:`stack.redo`.
-
->>> stack().redo()
->>> sequence
-[1, 2, 3, 4, 5]
-
-Return values and exceptions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The action may have a return value, but this will only be returned when
-it is first explicitly called. Subsequent redo or undo calls will ingore 
-this.
-
->>> @undoable('Process')
-... def process(state, obj):
-...     obj[0] += 1
-...     state['obj'] = obj
-...     return obj
-...
->>> @process.undo
-... def process(state):
-...     state['obj'][0] -=1
-...
->>> obj = [1, 2]
->>> process(obj)
-[2, 2]
->>> print(obj)
-[2, 2]
->>> stack().undo()
->>> print(obj)
-[1, 2]
-
-If an exception is raised during the action, it is not added to the 
-stack and the exception is propagated. If an exception is raised 
-during a redo or undo operation, the exception is propagated and the
-stack is cleared.  
-     
-Nested actions
-^^^^^^^^^^^^^^
-
-Consider a slightly more complex example which also allows deletions.
-
->>> @undoable('Add')
-... def add(state, seq, item):
-...     seq.append(item)
-...     state['seq'] = seq
-...
->>> @add.undo
-... def add(state):
-...     delete(state['seq'])
-...
->>> @undoable('Delete')
-... def delete(state, seq):
-...     state['value'] = seq.pop()
-...     state['seq'] = seq
-...
->>> @delete.undo
-... def delete(state):
-...     add(state['seq'], state['value'])
-
-This example illustrates that undoable actions can call each other safely 
-(*delete.undo()* calls *add()* and *add.undo()* calls *delete()*).
-
->>> seq = [3, 6]
->>> add(seq, 4)
->>> seq
-[3, 6, 4]
->>> stack().undo()
->>> seq
-[3, 6]
->>> delete(seq)
->>> seq
-[3]
->>> stack().undo()
->>> seq
-[3, 6]
-
-Clearing the stack
-^^^^^^^^^^^^^^^^^^
-
-The stack may be cleared if, for example, the document is saved.
-
->>> stack().canundo()
-True
->>> stack().clear()
->>> stack().canundo()
-False
-
-Groups
-^^^^^^
-
-A series of commands may be grouped within a function using the
-:func:`group` context manager.
-
->>> seq = []
->>> with _Group('Add many'):
-...     for item in [4, 6, 8]:
-...         add(seq, item)
->>> seq
-[4, 6, 8]
->>> stack().undocount()
-1
->>> stack().undo()
->>> seq
-[]
-
-.. versionadded:: 0.4.2
-    An `undoable` may also be constructed as a generator which yields one
-    value, the undo text.
-    
-    >>> @undoable
-    ... def add(seq, item):
-    ...     seq.append(item)
-    ...     pos = len(seq) - 1
-    ...     yield 'Add item'
-    ...     del seq[pos]
-    ...
-    >>> seq = [1, 2, 3]
-    >>> add(seq, 4)
-    >>> seq
-    [1, 2, 3, 4]
-    >>> stack().undotext()
-    'Undo Add item'
-    >>> stack().undo()
-    >>> seq
-    [1, 2, 3]
-
-Members
--------
-'''
 
 # Implementation Notes
 # ^^^^^^^^^^^^^^^^^^^^
@@ -212,51 +29,63 @@ Members
 import functools
 import contextlib
 
-from dtlibs.core import singleton, none, iscallable
+from dtlibs import core
 from collections import deque
 
 class _Action:
     ''' This represents an action which can be done and undone.
     
-    It is basically the result of a call on an undoable function and has
-    three methods: ``do()``, ``undo()`` and ``text()``. This class
-    should always be instantiated by an _ActionFactory.
+    It is the result of a call on an undoable function and has
+    three methods: ``do()``, ``undo()`` and ``text()``.  The first value
+    returned by the internal call in ``do()`` is the value which will subsequenty be returned
+    by ``text``.  Any remaining values are returned by ``do()``.
     '''
-    def __init__(self, vars, state):
+    def __init__(self, vars, args, kwargs):
         self.vars = vars
-        self.state = state
+        self.args = args
+        self.kwargs = kwargs
+        self._text = ''
 
     def do(self):
-        'Redo the action'
-        if 'instance' in self.vars and self.vars['instance'] is not None:
-            args = (self.vars['instance'], self.state) + self.state['args']
+        'Do or redo the action'
+        rets = self.vars['do'](*self.args, **self.kwargs)
+        if isinstance(rets, tuple):
+            self._text = rets[0]
+            return rets[1:]
+        elif rets is None:
+            self._text = ''
+            return None
         else:
-            args = (self.state,) + self.state['args']
-        kwargs = self.state['kwargs']
-        return self.vars['do'](*args, **kwargs)
+            self._text = rets
+            return None
 
     def undo(self):
         'Undo the action'
-        if 'instance' in self.vars and self.vars['instance'] is not None:
-            args = (self.vars['instance'], self.state)
+        if hasattr(self, 'state'):
+            self.vars['undo'](self.state)
         else:
-            args = (self.state,)
-        self.vars['undo'](*args)
+            self.vars['undo']()
 
     def text(self):
         'Return the descriptive text of the action'
-        return self.vars['text']().format(**self.state)
+        return self._text
 
 
+@core.deprecated('0.4.2', 'Old syntax will be removed in 0.5')
 class _ActionFactory:
     ''' Used by the ``undoable`` function to create Actions.
     
-    ``undoable`` returns an instance of an _ActionFactory, which is used 
+    ``undoable`` returns an instance of an `ActionFactory`, which is used 
     in code to set up the do and undo functions.  When called, it
-    creates a new instance of an _Action, runs it and pushes it onto the stack.
+    creates a new instance of an _Action, runs it and pushes it onto 
+    the stack.
+    
+    `ActionFactory` is really object which is bound to the name of the
+    function it wraps around. `Action` is an instance of a specific call
+    to that function. 
     '''
     def __init__(self, desc, do, undo):
-        self._desc = lambda: desc
+        self._desc = desc
         self._do = do
         self._undo = undo
         self._instance = None
@@ -265,6 +94,21 @@ class _ActionFactory:
         'Store instance for bound methods.'
         self._instance = instance
         return self
+
+    def calldo(self, *args, **kwargs):
+        if self._instance is None:
+            ret = self._do(*args, **kwargs)
+        else:
+            ret = self._do(self._instance, *args, **kwargs)
+        if ret is None:
+            ret = tuple()
+        return (self._desc.format(**args[0]),) + ret
+
+    def callundo(self, state):
+        if self._instance is None:
+            return self._undo(state)
+        else:
+            return self._undo(self._instance, state)
 
     def do(self, func):
         ' Set the do function'
@@ -295,9 +139,10 @@ class _ActionFactory:
         else:
             assert None not in [self._do, self._undo]
             state = {'args': args, 'kwargs': kwargs}
-            vars = {'text': self._desc, 'instance': self._instance,
-                    'do': self._do, 'undo': self._undo}
-            action = _Action(vars, state)
+            args = (state,) + tuple(args)
+            vars = {'do': self.calldo, 'undo': self.callundo}
+            action = _Action(vars, args, kwargs)
+            action.state = state
             ret = action.do()
             stack().append(action)
             return ret
@@ -311,7 +156,6 @@ class _GeneratorActionFactory:
     '''
     def __init__(self, generator):
         self._generator = generator
-        self._desc = ''
         self._instance = None
 
     def __get__(self, instance, owner):
@@ -319,22 +163,15 @@ class _GeneratorActionFactory:
         self._instance = instance
         return self
 
-    def _text(self):
-        return self._desc
-
-    def _do(self, state, *args, **kwargs):
-        ''' Create an instance of the generator and call it.
-        
-        *state* is ignored here and may be removed later.
-        '''
+    def _do(self, *args, **kwargs):
+        ''' Create an instance of the generator and call it.'''
+        if self._instance is not None:
+            args = (self._instance,) + args
         self._runner = self._generator(*args, **kwargs)
-        self._desc = next(self._runner)
+        return next(self._runner)
 
-    def _undo(self, state):
-        ''' call the next iteration of the generator.
-
-        *state* is ignored here and may be removed later.
-        '''
+    def _undo(self, *args):
+        ''' call the next iteration of the generator.'''
         try:
             next(self._runner)
         except StopIteration:
@@ -346,66 +183,23 @@ class _GeneratorActionFactory:
         This will create an _Action, run it, set *desc*, and push the 
         action onto the stack.
         '''
-        assert None not in [self._do, self._undo]
-        state = {'args': args, 'kwargs': kwargs}
-        vars = {'text': self._text, 'instance': self._instance,
-                'do': self._do, 'undo': self._undo}
-        action = _Action(vars, state)
+        vars = {'do': self._do, 'undo': self._undo}
+        action = _Action(vars, args, kwargs)
         ret = action.do()
         stack().append(action)
         return ret
 
 
-def undoable(desc, do=None, undo=None):
-    ''' Factory to create a new undoable action type. 
+def undoable(arg, do=None, undo=None):
+    ''' Decorator which creates a new undoable action type. 
     
-    This function creates a new undoable command given a description
-    and do function. An undo function must also be specified before
-    it is used, but is optional to allow :func:`undoable` to be used as a
-    decorator. The command object returned has an *undo* method 
-    which can be used as a decorator to set the undo function.
-    
-    >>> def do_something(state):
-    ...     pass
-    >>> def undo_something(state):
-    ...     pass
-    >>> command = undoable('Do something', do_something, undo_something)
-    
-    Or as a decorator:
-    
-    >>> @undoable('Do something')
-    ... def do_something(state):
-    ...     pass
-    >>> @do_something.undo
-    ... def do_something(state):
-    ...     pass
-    
-    Both the do and undo functions should accept a *state* variable, 
-    which is passed as the first argument (after *self*) to the *do*
-    function and as the only argument (other than *self*) to the *undo*
-    function. *state* is a dict of values which are used to transfer 
-    data between *do* and *undo*, and initially contains keys 'args' and 
-    'kwargs' which correspond to the arguments passed to the *do* function.
-    
-    The description string can include formatting commands (see 
-    :ref:`Python's String Formatting <python:string-formatting>`), which 
-    are formatted using the state variable. This can be retrieved using 
-    ``stack().undotext()``
-    
-    >>> @undoable('description of {foo}')
-    ... def do_foo(state):
-    ...     state['foo'] = 'bar'
-    >>> @do_foo.undo
-    ... def do_foo(state):
-    ...     pass
-    >>> do_foo()
-    >>> stack().undotext()
-    'Undo description of bar'
+    Normal usage is as a decorator with no arguments.  However, an
+    alternative, deprecated, usage is also allowed as described above.
     '''
-    if iscallable(desc):
-        factory = _GeneratorActionFactory(desc)
+    if core.iscallable(arg):
+        factory = _GeneratorActionFactory(arg)
     else:
-        factory = _ActionFactory(desc, do, undo)
+        factory = _ActionFactory(arg, do, undo)
     functools.update_wrapper(factory, do)
     return factory
 
@@ -442,16 +236,10 @@ def group(desc):
     ''' Return a context manager for grouping undoable actions. '''
     return _Group(desc)
 
-class stack(metaclass=singleton()):
+class stack(metaclass=core.singleton()):
     ''' The main undo stack. 
     
-    This is a singleton, so it can always be called as ``stack()``.
-    
-    >>> stk = stack()
-    >>> stk is stack()
-    True
-    >>> stack() is stack()
-    True
+    This is a singleton, so the smae object is always returned by ``stack()``.
     
     The two key features are the :func:`redo` and :func:`undo` methods. If an 
     exception occurs during doing or undoing a undoable, the undoable
@@ -468,8 +256,9 @@ class stack(metaclass=singleton()):
     ...     print('Can now redo: {}'.format(stack().redotext()))
     >>> stack().docallback = done
     >>> stack().undocallback = undone
-    >>> def action(state): pass
-    >>> action = undoable('An action', action, action)
+    >>> @undoable
+    ... def action():
+    ...     yield 'An action'
     >>> action()
     Can now undo: Undo An action
     >>> stack().undo()
@@ -477,10 +266,10 @@ class stack(metaclass=singleton()):
     >>> stack().redo()
     Can now undo: Undo An action
     
-    Setting them back to :func:`dtlibs.core.none` will stop any 
+    Setting them back to `dtlibs.core.none` will stop any 
     further actions.
     
-    >>> stack().docallback = stack().undocallback = none
+    >>> stack().docallback = stack().undocallback = core.none
     >>> action()
     >>> stack().undo()
     
@@ -504,8 +293,8 @@ class stack(metaclass=singleton()):
         self._redos = deque()
         self._receiver = self._undos
         self._savepoint = None
-        self.undocallback = none
-        self.docallback = none
+        self.undocallback = core.none
+        self.docallback = core.none
 
     def canundo(self):
         ''' Return *True* if undos are available '''
