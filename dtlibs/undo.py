@@ -40,15 +40,16 @@ class _Action:
     returned by the internal call in ``do()`` is the value which will subsequenty be returned
     by ``text``.  Any remaining values are returned by ``do()``.
     '''
-    def __init__(self, vars, args, kwargs):
-        self.vars = vars
+    def __init__(self, do, undo, args, kwargs):
+        self._do = do
+        self._undo = undo
         self.args = args
         self.kwargs = kwargs
         self._text = ''
 
     def do(self):
         'Do or redo the action'
-        rets = self.vars['do'](*self.args, **self.kwargs)
+        rets = self._do(*self.args, **self.kwargs)
         if isinstance(rets, tuple):
             self._text = rets[0]
             return rets[1:]
@@ -62,9 +63,9 @@ class _Action:
     def undo(self):
         'Undo the action'
         if hasattr(self, 'state'):
-            self.vars['undo'](self.state)
+            self._undo(self.state)
         else:
-            self.vars['undo']()
+            self._undo()
 
     def text(self):
         'Return the descriptive text of the action'
@@ -102,6 +103,8 @@ class _ActionFactory:
             ret = self._do(self._instance, *args, **kwargs)
         if ret is None:
             ret = tuple()
+        elif not isinstance(ret, tuple):
+            ret = (ret,)
         return (self._desc.format(**args[0]),) + ret
 
     def callundo(self, state):
@@ -140,11 +143,15 @@ class _ActionFactory:
             assert None not in [self._do, self._undo]
             state = {'args': args, 'kwargs': kwargs}
             args = (state,) + tuple(args)
-            vars = {'do': self.calldo, 'undo': self.callundo}
-            action = _Action(vars, args, kwargs)
+            action = _Action(self.calldo, self.callundo, args, kwargs)
             action.state = state
             ret = action.do()
             stack().append(action)
+            if isinstance(ret, tuple):
+                if len(ret) == 1:
+                    return ret[0]
+                elif len(ret) == 0:
+                    return None
             return ret
 
 
@@ -183,10 +190,14 @@ class _GeneratorActionFactory:
         This will create an _Action, run it, set *desc*, and push the 
         action onto the stack.
         '''
-        vars = {'do': self._do, 'undo': self._undo}
-        action = _Action(vars, args, kwargs)
+        action = _Action(self._do, self._undo, args, kwargs)
         ret = action.do()
         stack().append(action)
+        if isinstance(ret, tuple):
+            if len(ret) == 1:
+                return ret[0]
+            elif len(ret) == 0:
+                return None
         return ret
 
 

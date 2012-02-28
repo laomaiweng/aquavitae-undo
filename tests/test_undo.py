@@ -81,6 +81,27 @@ class TestUndoable(TestCase):
         self.stack[0].undo()
         assert self.undo_called
 
+    def test_return_single(self):
+        'Test a single return value'
+        @undo.undoable('desc')
+        def f(state):
+            return 32
+        @f.undo
+        def f(state):
+            pass
+        ret = f()
+        assert ret == 32, ret
+
+    def test_return_many(self):
+        'Test multiple return values.'
+        @undo.undoable('desc')
+        def f(state):
+            return 32, ['a', 'list']
+        @f.undo
+        def f(state):
+            pass
+        assert f() == (32, ['a', 'list'])
+
 
 class TestGenerator(TestCase):
     'Test undoble as a generator.'
@@ -141,6 +162,21 @@ class TestGenerator(TestCase):
         a = A()
         a.f(1, 2)
 
+    def test_return_single(self):
+        'Test a single return value'
+        @undo.undoable
+        def f():
+            yield 'name', 32
+        ret = f()
+        assert ret == 32, ret
+
+    def test_return_many(self):
+        'Test multiple return values.'
+        @undo.undoable
+        def f():
+            yield 'name', 32, ['a', 'list']
+        assert f() == (32, ['a', 'list'])
+
 
 class TestActionFactory(TestCase):
 
@@ -189,7 +225,7 @@ class TestStack(TestCase):
 
     def setup(self):
         # Create a mock action for use in tests
-        self.action = undo._Action('', core.none, core.none)
+        self.action = undo._Action(core.none, core.none, None, None)
         self.action.undo = lambda: None
         self.action.text = lambda: 'blah'
         super().setup()
