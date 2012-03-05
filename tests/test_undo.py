@@ -162,6 +162,21 @@ class TestGenerator(TestCase):
         a = A()
         a.f(1, 2)
 
+    def test_method_instances(self):
+        'Test that multiple instances do not share actions.'
+        class A:
+            @undo.undoable
+            def f(self, arg):
+                self.value = arg
+                yield
+
+        a = A()
+        b = A()
+        a.f(1)
+        b.f(2)
+        assert a.value == 1
+        assert b.value == 2
+
     def test_return_single(self):
         'Test a single return value'
         @undo.undoable
@@ -220,6 +235,26 @@ class TestGroup(TestCase):
         'Test that ``group()`` returns a context manager.'
         with undo.group('desc'):
             pass
+
+    def test_group_multiple_undo(self):
+        'Test that calling undo after a group undoes all actions.'
+        @undo.undoable
+        def add(seq, v):
+            seq.append(v)
+            yield 'add'
+            seq.pop()
+
+        l = []
+        with undo.group('desc'):
+            for i in range(3):
+                add(l, i)
+
+        assert l == [0, 1, 2], l
+        assert undo.stack().undocount() == 1
+        undo.stack().undo()
+        assert undo.stack().undocount() == 0
+        assert l == [], l
+
 
 class TestStack(TestCase):
 

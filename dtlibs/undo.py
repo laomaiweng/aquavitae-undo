@@ -155,42 +155,56 @@ class _ActionFactory:
             return ret
 
 
-class _GeneratorActionFactory:
-    '''A generator-style action factory. 
+class _GeneratorAction:
+    ''' This represents an action which can be done and undone.
     
-    *desc* is not set until the method is called, which is fine since it 
-    is not needed until that point.
+    It is the result of a call on an undoable function and has
+    three methods: ``do()``, ``undo()`` and ``text()``.  The first value
+    returned by the internal call in ``do()`` is the value which will subsequenty be returned
+    by ``text``.  Any remaining values are returned by ``do()``.
     '''
-    def __init__(self, generator):
+    def __init__(self, generator, args, kwargs):
         self._generator = generator
-        self._instance = None
+        self.args = args
+        self.kwargs = kwargs
+        self._text = ''
 
-    def __get__(self, instance, owner):
-        'Store instance for bound methods.'
-        self._instance = instance
-        return self
+    def do(self):
+        'Do or redo the action'
+        self._runner = self._generator(*self.args, **self.kwargs)
+        rets = next(self._runner)
+        if isinstance(rets, tuple):
+            self._text = rets[0]
+            return rets[1:]
+        elif rets is None:
+            self._text = ''
+            return None
+        else:
+            self._text = rets
+            return None
 
-    def _do(self, *args, **kwargs):
-        ''' Create an instance of the generator and call it.'''
-        if self._instance is not None:
-            args = (self._instance,) + args
-        self._runner = self._generator(*args, **kwargs)
-        return next(self._runner)
-
-    def _undo(self, *args):
-        ''' call the next iteration of the generator.'''
+    def undo(self):
+        'Undo the action'
         try:
             next(self._runner)
         except StopIteration:
             pass
+        # Delete it so that its not accidentally called again
+        del self._runner
 
-    def __call__(self, *args, **kwargs):
-        ''' Create the action.
-         
-        This will create an _Action, run it, set *desc*, and push the 
-        action onto the stack.
-        '''
-        action = _Action(self._do, self._undo, args, kwargs)
+    def text(self):
+        'Return the descriptive text of the action'
+        return self._text
+
+
+def _generatorActionFactory(generator):
+    ''' Create the action.
+     
+    This will create an _Action, run it, set *desc*, and push the 
+    action onto the stack.
+    '''
+    def inner(*args, **kwargs):
+        action = _GeneratorAction(generator, args, kwargs)
         ret = action.do()
         stack().append(action)
         if isinstance(ret, tuple):
@@ -199,6 +213,7 @@ class _GeneratorActionFactory:
             elif len(ret) == 0:
                 return None
         return ret
+    return inner
 
 
 def undoable(arg, do=None, undo=None):
@@ -208,7 +223,7 @@ def undoable(arg, do=None, undo=None):
     alternative, deprecated, usage is also allowed as described above.
     '''
     if core.iscallable(arg):
-        factory = _GeneratorActionFactory(arg)
+        factory = _generatorActionFactory(arg)
     else:
         factory = _ActionFactory(arg, do, undo)
     functools.update_wrapper(factory, do)
