@@ -1,5 +1,10 @@
 .. module:: dtlibs.undo
 
+.. testsetup::
+
+   from dtlibs.undo import *
+   
+   
 ===========
 dtlibs.undo
 ===========
@@ -18,42 +23,48 @@ The easiest way to use this framework is by defining actions using
 the `undoable` decorator on a generator object.  This is a very similar
 syntax to that used by Pythons's `contextlib.contextmanager`.  For example,
 
->>> @undoable
-... def add(sequence, item)
-...     # Do the action
-...     sequence.append(item)
-...     position = len(sequence) - 1
-...     # Yield a string describing the action 
-...     yield "Add '{}' at psn '{}'".format(item, position)
-...     # Undo the action
-...     del sequence(position)
+.. doctest::
+
+   >>> @undoable
+   ... def add(sequence, item):
+   ...     # Do the action
+   ...     sequence.append(item)
+   ...     position = len(sequence) - 1
+   ...     # Yield a string describing the action 
+   ...     yield "Add '{}' at psn '{}'".format(item, position)
+   ...     # Undo the action
+   ...     del sequence[position]
 
 
 This defines a new action, *add*, which appends an item to a sequence.
 The resulting object is an factory which creates a new action instance
 and adds it to the stack.
 
->>> s = [1, 2, 3]
->>> add(s, 4)
->>> s
-[1, 2, 3, 4]
->>> stack().undotext()
-"Undo Add '4' at psn '3'"
->>> stack().undo()
->>> s
-[1, 2, 3]
+.. doctest::
+
+   >>> s = [1, 2, 3]
+   >>> add(s, 4)
+   >>> s
+   [1, 2, 3, 4]
+   >>> stack().undotext()
+   "Undo Add '4' at psn '3'"
+   >>> stack().undo()
+   >>> s
+   [1, 2, 3]
 
 .. note:
 
    While all the example show here use functions, they will work perfectly
    well with class methods too.  E.g.
    
-   >>> class Cls:
-   ...     @undoable
-   ...     def undoable_method(self, arg1, arg2):
-   ...         self.value = arg1 + arg2
-   ...         yield 'Action'
-   ...         self.value = 0
+   .. doctest::
+   
+      >>> class Cls:
+      ...     @undoable
+      ...     def undoable_method(self, arg1, arg2):
+      ...         self.value = arg1 + arg2
+      ...         yield 'Action'
+      ...         self.value = 0
 
 .. deprecated: 0.4.2
 
@@ -67,30 +78,32 @@ and adds it to the stack.
    the argument list with to values, *args* and *kwargs* which contain the
    arguments and keyword arguments passed to the function.  This usage is
    seldom useful and will be removed in 0.5.
-        
-   >>> @undoable('Add {pos}')
-   ... def add(state, seq, item):
-   ...     seq.append(item)
-   ...     state['seq'] = seq
-   ...     state['pos'] = len(seq) - 1
-   ... 
-   >>> @add.undo
-   ... def add(state):
-   ...     seq, pos = state['seq'], state['pos']
-   ...     del seq[pos]
-   ... 
-   >>> sequence = [1, 2, 3, 4]
-   >>> add(sequence, 5)
-   >>> sequence
-   [1, 2, 3, 4, 5]
-   >>> stack().undotext()
-   'Undo Add 4'
-   >>> stack().undo()
-   >>> sequence
-   [1, 2, 3, 4]
-   >>> stack().redo()
-   >>> sequence
-   [1, 2, 3, 4, 5]
+
+   .. doctest::         
+
+      >>> @undoable('Add {pos}')
+      ... def add(state, seq, item):
+      ...     seq.append(item)
+      ...     state['seq'] = seq
+      ...     state['pos'] = len(seq) - 1
+      ... 
+      >>> @add.undo
+      ... def add(state):
+      ...     seq, pos = state['seq'], state['pos']
+      ...     del seq[pos]
+      ... 
+      >>> sequence = [1, 2, 3, 4]
+      >>> add(sequence, 5)
+      >>> sequence
+      [1, 2, 3, 4, 5]
+      >>> stack().undotext()
+      'Undo Add 4'
+      >>> stack().undo()
+      >>> sequence
+      [1, 2, 3, 4]
+      >>> stack().redo()
+      >>> sequence
+      [1, 2, 3, 4, 5]
 
 Return values and exceptions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -98,20 +111,22 @@ Return values and exceptions
 The first call to the action may have a return value by adding it to the
 *yield* statement.  However, it will be ignored in subsequent redos or undos. 
 
->>> @undoable
-... def process(obj):
-...     obj[0] += 1
-...     yield 'Process', obj
-...     obj[0] -=1
-... 
->>> obj = [1, 2]
->>> process(obj)
-[2, 2]
->>> print(obj)
-[2, 2]
->>> stack().undo()
->>> print(obj)
-[1, 2]
+.. doctest::
+   
+   >>> @undoable
+   ... def process(obj):
+   ...     obj[0] += 1
+   ...     yield 'Process', obj
+   ...     obj[0] -=1
+   ... 
+   >>> obj = [1, 2]
+   >>> process(obj)
+   [2, 2]
+   >>> print(obj)
+   [2, 2]
+   >>> stack().undo()
+   >>> print(obj)
+   [1, 2]
 
 If an exception is raised during the action, it is not added to the 
 stack and the exception is propagated. If an exception is raised 
@@ -124,55 +139,61 @@ Nested actions
 It is safe for actions to call each other.  Only the top-most action
 is added to the stack.
 
->>> @undoable
-... def add(seq, item):
-...     seq.append(item)
-...     yield 'Add'
-...     pop(seq)
-... 
->>> @undoable
-... def pop(state, seq):
-...     value = seq.pop()
-...     yield 'Pop'
-...     add(seq, value)
-... 
->>> seq = [3, 6]
->>> add(seq, 4)
->>> seq
-[3, 6, 4]
->>> stack().undo()
->>> seq
-[3, 6]
->>> delete(seq)
->>> seq
-[3]
->>> stack().undo()
->>> seq
-[3, 6]
+.. doctest::
+   
+   >>> @undoable
+   ... def add(seq, item):
+   ...     seq.append(item)
+   ...     yield 'Add'
+   ...     pop(seq)
+   ... 
+   >>> @undoable
+   ... def pop(seq):
+   ...     value = seq.pop()
+   ...     yield 'Pop'
+   ...     add(seq, value)
+   ... 
+   >>> seq = [3, 6]
+   >>> add(seq, 4)
+   >>> seq
+   [3, 6, 4]
+   >>> stack().undo()
+   >>> seq
+   [3, 6]
+   >>> pop(seq)
+   >>> seq
+   [3]
+   >>> stack().undo()
+   >>> seq
+   [3, 6]
 
 Clearing the stack
 ^^^^^^^^^^^^^^^^^^
 
 The stack may be cleared if, for example, the document is saved.
 
->>> stack().canundo()
-True
->>> stack().clear()
->>> stack().canundo()
-False
+.. doctest::
+   
+   >>> stack().canundo()
+   True
+   >>> stack().clear()
+   >>> stack().canundo()
+   False
 
 It is also possible to record a savepoint to check if there have been any
 changes.
 
->>> add(seq, 5)
->>> stack().haschanged()
-True
->>> stack().savepoint()
->>> stack().haschanged()
-False
->>> stack().undo()
->>> stack().haschanged()
-True
+.. doctest::
+
+   >>> add(seq, 5)
+   >>> stack().haschanged()
+   True
+   >>> stack().savepoint()
+   >>> stack().haschanged()
+   False
+   >>> stack().undo()
+   >>> stack().haschanged()
+   True
 
 Groups
 ^^^^^^
@@ -180,17 +201,19 @@ Groups
 A series of actions may be grouped into a sngle action using the
 `group` context manager.
 
->>> seq = []
->>> with group('Add many'):
-...     for item in [4, 6, 8]:
-...         add(seq, item)
->>> seq
-[4, 6, 8]
->>> stack().undocount()
-1
->>> stack().undo()
->>> seq
-[]
+.. doctest::
+
+   >>> seq = []
+   >>> with group('Add many'):
+   ...     for item in [4, 6, 8]:
+   ...         add(seq, item)
+   >>> seq
+   [4, 6, 8]
+   >>> stack().undocount()
+   1
+   >>> stack().undo()
+   >>> seq
+   []
 
 Advanced Usage
 --------------
