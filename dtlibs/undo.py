@@ -37,131 +37,9 @@ class _Action:
     
     It is the result of a call on an undoable function and has
     three methods: ``do()``, ``undo()`` and ``text()``.  The first value
-    returned by the internal call in ``do()`` is the value which will subsequenty be returned
-    by ``text``.  Any remaining values are returned by ``do()``.
-    '''
-    def __init__(self, do, undo, args, kwargs):
-        self._do = do
-        self._undo = undo
-        self.args = args
-        self.kwargs = kwargs
-        self._text = ''
-
-    def do(self):
-        'Do or redo the action'
-        rets = self._do(*self.args, **self.kwargs)
-        if isinstance(rets, tuple):
-            self._text = rets[0]
-            return rets[1:]
-        elif rets is None:
-            self._text = ''
-            return None
-        else:
-            self._text = rets
-            return None
-
-    def undo(self):
-        'Undo the action'
-        if hasattr(self, 'state'):
-            self._undo(self.state)
-        else:
-            self._undo()
-
-    def text(self):
-        'Return the descriptive text of the action'
-        return self._text
-
-
-@core.deprecated('0.4.2', 'Old syntax will be removed in 0.5')
-class _ActionFactory:
-    ''' Used by the ``undoable`` function to create Actions.
-    
-    ``undoable`` returns an instance of an `ActionFactory`, which is used 
-    in code to set up the do and undo functions.  When called, it
-    creates a new instance of an _Action, runs it and pushes it onto 
-    the stack.
-    
-    `ActionFactory` is really object which is bound to the name of the
-    function it wraps around. `Action` is an instance of a specific call
-    to that function. 
-    '''
-    def __init__(self, desc, do, undo):
-        self._desc = desc
-        self._do = do
-        self._undo = undo
-        self._instance = None
-
-    def __get__(self, instance, owner):
-        'Store instance for bound methods.'
-        self._instance = instance
-        return self
-
-    def calldo(self, *args, **kwargs):
-        if self._instance is None:
-            ret = self._do(*args, **kwargs)
-        else:
-            ret = self._do(self._instance, *args, **kwargs)
-        if ret is None:
-            ret = tuple()
-        elif not isinstance(ret, tuple):
-            ret = (ret,)
-        return (self._desc.format(**args[0]),) + ret
-
-    def callundo(self, state):
-        if self._instance is None:
-            return self._undo(state)
-        else:
-            return self._undo(self._instance, state)
-
-    def do(self, func):
-        ' Set the do function'
-        self._do = func
-        return self
-
-    def undo(self, func):
-        ' Set the undo function'
-        self._undo = func
-        return self
-
-    def __call__(self, *args, **kwargs):
-        ''' Either set ``do`` or create the action.
-         
-        If do has been set, this will create an _Action, run it and 
-        push it onto the stack. If not, it will set the do function.
-        This allows the following two ways of using it:
-        >>> factory = _ActionFactory('desc', None, None)
-        >>> @factory
-        ... def do_something(self):
-        ...     pass
-        >>> do_something is factory
-        True
-        '''
-        if self._do is None:
-            self.do(args[0])
-            return self
-        else:
-            assert None not in [self._do, self._undo]
-            state = {'args': args, 'kwargs': kwargs}
-            args = (state,) + tuple(args)
-            action = _Action(self.calldo, self.callundo, args, kwargs)
-            action.state = state
-            ret = action.do()
-            stack().append(action)
-            if isinstance(ret, tuple):
-                if len(ret) == 1:
-                    return ret[0]
-                elif len(ret) == 0:
-                    return None
-            return ret
-
-
-class _GeneratorAction:
-    ''' This represents an action which can be done and undone.
-    
-    It is the result of a call on an undoable function and has
-    three methods: ``do()``, ``undo()`` and ``text()``.  The first value
-    returned by the internal call in ``do()`` is the value which will subsequenty be returned
-    by ``text``.  Any remaining values are returned by ``do()``.
+    returned by the internal call in ``do()`` is the value which will 
+    subsequently be returned by ``text``.  Any remaining values are 
+    returned by ``do()``.
     '''
     def __init__(self, generator, args, kwargs):
         self._generator = generator
@@ -197,14 +75,19 @@ class _GeneratorAction:
         return self._text
 
 
-def _generatorActionFactory(generator):
-    ''' Create the action.
-     
-    This will create an _Action, run it, set *desc*, and push the 
-    action onto the stack.
+def undoable(generator):
+    ''' Decorator which creates a new undoable action type. 
+    
+    This decorator should be used on a generator of the following format::
+    
+        @undoable
+        def operation(*args):
+            do_operation_code
+            yield 'descriptive text'
+            undo_operator_code
     '''
     def inner(*args, **kwargs):
-        action = _GeneratorAction(generator, args, kwargs)
+        action = _Action(generator, args, kwargs)
         ret = action.do()
         stack().append(action)
         if isinstance(ret, tuple):
@@ -214,20 +97,6 @@ def _generatorActionFactory(generator):
                 return None
         return ret
     return inner
-
-
-def undoable(arg, do=None, undo=None):
-    ''' Decorator which creates a new undoable action type. 
-    
-    Normal usage is as a decorator with no arguments.  However, an
-    alternative, deprecated, usage is also allowed as described above.
-    '''
-    if core.iscallable(arg):
-        factory = _generatorActionFactory(arg)
-    else:
-        factory = _ActionFactory(arg, do, undo)
-    functools.update_wrapper(factory, do)
-    return factory
 
 
 class _Group:
@@ -259,8 +128,28 @@ class _Group:
 
 
 def group(desc):
-    ''' Return a context manager for grouping undoable actions. '''
+    ''' Return a context manager for grouping undoable actions. 
+    
+    All actions which occur within the group will be undone by a single call
+    of `stack.undo`, e.g.
+    
+    >>> @undoable
+    ... def operation(n):
+    ...     yield
+    ...     print(n)
+    >>> with group('text'):
+    ...     for n in range(3):
+    ...         operation(n)
+    >>> operation(3)
+    >>> stack().undo()
+    3
+    >>> stack().undo()
+    2
+    1
+    0
+    '''
     return _Group(desc)
+
 
 class stack(metaclass=core.singleton()):
     ''' The main undo stack. 
