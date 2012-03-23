@@ -26,7 +26,6 @@
 # :class:`_ActionFactory` instance. :func:`_ActionFactory.undo` can
 # also be used as a decorator on the *undo* function.
 
-import functools
 import contextlib
 
 from dtlibs import core
