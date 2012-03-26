@@ -5,16 +5,16 @@
    from dtlibs.undo import *
    
    
-===========
 dtlibs.undo
 ===========
 
 This is an undo/redo framework based on a functional approach which uses
-a undoable stack to track actions.  Actions are the result of a function 
-call and know how to undo and redo themselves, assuming that any objects 
+a undoable stack to track actions.  Actions are the result of a function
+call and know how to undo and redo themselves, assuming that any objects
 they act on will always be in the same state before and after the action
 occurs respectively.  The `stack` is a singleton object which tracks all
 actions which can be done or undone.
+
 
 Basic Usage
 -----------
@@ -66,50 +66,12 @@ and adds it to the stack.
       ...         yield 'Action'
       ...         self.value = 0
 
-.. deprecated: 0.4.2
-
-   A more cumbersome usage is to define the *do* and *undo* components 
-   separately.  In this case, `undoable` is called with a string argument
-   representing the action description.  When used like this, the first 
-   positional argument to both the *do* and *undo* functions is a *state*
-   dict which can be used to transfer data between the two functions.  The
-   values in *state* are also used to format the action description.  *state*
-   is hidden from the exposed function and is automatically inserted into
-   the argument list with to values, *args* and *kwargs* which contain the
-   arguments and keyword arguments passed to the function.  This usage is
-   seldom useful and will be removed in 0.5.
-
-   .. doctest::         
-
-      >>> @undoable('Add {pos}')
-      ... def add(state, seq, item):
-      ...     seq.append(item)
-      ...     state['seq'] = seq
-      ...     state['pos'] = len(seq) - 1
-      ... 
-      >>> @add.undo
-      ... def add(state):
-      ...     seq, pos = state['seq'], state['pos']
-      ...     del seq[pos]
-      ... 
-      >>> sequence = [1, 2, 3, 4]
-      >>> add(sequence, 5)
-      >>> sequence
-      [1, 2, 3, 4, 5]
-      >>> stack().undotext()
-      'Undo Add 4'
-      >>> stack().undo()
-      >>> sequence
-      [1, 2, 3, 4]
-      >>> stack().redo()
-      >>> sequence
-      [1, 2, 3, 4, 5]
 
 Return values and exceptions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The first call to the action may have a return value by adding it to the
-*yield* statement.  However, it will be ignored in subsequent redos or undos. 
+*yield* statement.  However, it will be ignored in subsequent redos or undos.
 
 .. doctest::
    
@@ -128,11 +90,12 @@ The first call to the action may have a return value by adding it to the
    >>> print(obj)
    [1, 2]
 
-If an exception is raised during the action, it is not added to the 
-stack and the exception is propagated. If an exception is raised 
+If an exception is raised during the action, it is not added to the
+stack and the exception is propagated. If an exception is raised
 during a redo or undo operation, the exception is propagated and the
 stack is cleared.
-     
+
+
 Nested actions
 ^^^^^^^^^^^^^^
 
@@ -167,6 +130,7 @@ is added to the stack.
    >>> seq
    [3, 6]
 
+
 Clearing the stack
 ^^^^^^^^^^^^^^^^^^
 
@@ -195,6 +159,7 @@ changes.
    >>> stack().haschanged()
    True
 
+
 Groups
 ^^^^^^
 
@@ -215,6 +180,7 @@ A series of actions may be grouped into a sngle action using the
    >>> seq
    []
 
+
 Advanced Usage
 --------------
 
@@ -225,9 +191,10 @@ manually using `stack.append`.  The simplest way of creating custom
 actions is to create a class which provides these methods and adds
 itself to the stack when created.
 
+
 Members
 -------
-   
+
 .. autofunction:: dtlibs.undo.undoable
 
 .. autofunction:: dtlibs.undo.group
