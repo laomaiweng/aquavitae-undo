@@ -195,9 +195,164 @@ itself to the stack when created.
 Members
 -------
 
-.. autofunction:: dtlibs.undo.undoable
+.. function:: undoable
 
-.. autofunction:: dtlibs.undo.group
+    Decorator which creates a new undoable action type. 
+    
+    This decorator should be used on a generator of the following format::
+    
+        @undoable
+        def operation(*args):
+            do_operation_code
+            yield 'descriptive text'
+            undo_operation_code
+   
+
+.. function:: group
+
+    Return a context manager for grouping undoable actions.  All actions 
+    which occur within the group will be undone by a single call of 
+    `stack.undo`, e.g.
+    
+        >>> @undoable
+        ... def operation(n):
+        ...     yield
+        ...     print(n)
+        >>> with group('text'):
+        ...     for n in range(3):
+        ...         operation(n)
+        >>> operation(3)
+        >>> stack().undo()
+        3
+        >>> stack().undo()
+        2
+        1
+        0
  
-.. autoclass:: dtlibs.undo.stack
-   :members:
+ 
+.. class:: stack
+    
+    The main undo stack.  This is a singleton, so the same object is always 
+    returned by ``stack()``.
+    
+    The two key features are the `redo` and `undo` methods. If an 
+    exception occurs during doing or undoing a undoable, the undoable
+    aborts and the stack is cleared to avoid any further data corruption. 
+    
+    The stack provides two properties for tracking actions: *docallback* 
+    and *undocallback*. Each of these allow a callback function to be set
+    which is called when an action is done or undone repectively. By default, 
+    they do nothing.
+    
+        >>> def done():
+        ...     print('Can now undo: {}'.format(stack().undotext()))
+        >>> def undone():
+        ...     print('Can now redo: {}'.format(stack().redotext()))
+        >>> stack().docallback = done
+        >>> stack().undocallback = undone
+        >>> @undoable
+        ... def action():
+        ...     yield 'An action'
+        >>> action()
+        Can now undo: Undo An action
+        >>> stack().undo()
+        Can now redo: Redo An action
+        >>> stack().redo()
+        Can now undo: Undo An action
+    
+    Setting them back to `dtlibs.core.none` will stop any 
+    further actions.
+    
+        >>> stack().docallback = stack().undocallback = core.none
+        >>> action()
+        >>> stack().undo()
+    
+    It is possible to mark a point in the undo history when the document
+    handled is saved. This allows the undo system to report whether a 
+    document has changed. The point is marked using :func:`savepoint` and
+    :func:`haschanged` returns whether or not the state has changed (either
+    by doing or undoing an action). Only one savepoint can be tracked,
+    marking a new one removes the old one.
+    
+        >>> stack().savepoint()
+        >>> stack().haschanged()
+        False
+        >>> action()
+        >>> stack().haschanged()
+        True
+        
+    .. method:: canundo
+    
+        Return `True` if undos are available.
+
+
+    .. method:: canredo
+    
+        Return `True` if redos are available.
+
+
+    .. method:: redo
+    
+        Redo the last undone action.  This is only possible if no other 
+        actions have occurred since the last undo call.
+
+
+    .. method:: undo
+        
+        Undo the last action.
+        
+
+    .. method:: clear
+
+        Clear the undo list.
+
+
+    .. method:: undocount
+    
+        Return the number of undos available.
+
+
+    .. method:: redocount
+    
+        Return the number of redos available.
+
+
+    .. method:: undotext
+
+        Return a description of the next available undo.
+
+
+    .. method: redotext
+    
+        Return a description of the next available redo.
+
+
+    .. method:: setreceiver([receiver=None])
+
+        Set an object to receiver commands pushed onto the stack.
+        
+        By default the receiver is an internally managed stack, but it 
+        can be set to any object with an *append()* method.  This is used
+        mainly for grouping actions.
+  
+
+    .. method:: resetreceiver
+    
+        Reset the receiver to the internal stack.
+
+
+    .. method:: append(action)
+    
+        Add an `undoable` action to the stack, using ``receiver.append()``.
+
+
+    .. method:: savepoint
+        
+        Set the current point in the undo/redo history as the savepoint.
+        This makes it possible to check whether changes have been made.
+
+
+    .. method:: haschanged
+        
+        Return `True` if the state has changed since the savepoint.  This 
+        will always return `True` if the savepoint has not been set.
