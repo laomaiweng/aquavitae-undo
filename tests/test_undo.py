@@ -20,13 +20,8 @@ from collections import deque
 
 import undo
 
-class TestCase:
 
-    def setup(self):
-        undo.setstack(undo.Stack())
-
-
-class TestSetStack():
+class TestSetStack:
     'Test setting and calling the current stack'
 
     def test_init_stack(self):
@@ -133,7 +128,10 @@ class TestUndoable:
         assert f() == (32, ['a', 'list'])
 
 
-class TestGroup(TestCase):
+class TestGroup:
+
+    def setup(self):
+        undo.setstack(undo.Stack())
 
     def test_stack(self):
         'Test that ``with group()`` diverts undo.stack()'
@@ -175,7 +173,7 @@ class TestGroup(TestCase):
         assert l == [], l
 
 
-class TestStack(TestCase):
+class TestStack:
 
     def setup(self):
         # Create a mock action for use in tests
@@ -185,7 +183,7 @@ class TestStack(TestCase):
             def text(self):
                 return 'blah'
         self.action = Action()
-        super().setup()
+        undo.setstack(undo.Stack())
 
     def test_singleton(self):
         'undo.stack() always returns the same object'
@@ -259,8 +257,11 @@ class TestStack(TestCase):
         assert undo.stack().haschanged()
 
 
-class TestSystem(TestCase):
+class TestSystem:
     'A series of system tests'
+
+    def setup(self):
+        undo.setstack(undo.Stack())
 
     def setup_common(self):
         @undo.undoable
@@ -320,7 +321,7 @@ class TestSystem(TestCase):
         return add
 
 
-class TestNested(TestCase):
+class TestNested:
     'Test nested actions'
 
     def setup(self):
@@ -339,14 +340,14 @@ class TestNested(TestCase):
 
         self.add = add
         self.delete = delete
-        super().setup()
+        undo.setstack(undo.Stack())
 
 
-class TestExceptions(TestCase):
+class TestExceptions:
     'Test how exceptions within actions are handled.'
 
     def setup(self):
-        super().setup()
+        undo.setstack(undo.Stack())
         @undo.undoable
         def action():
             yield
