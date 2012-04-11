@@ -4,3 +4,6 @@ syntax: glob
 *.pyc
 .settings
 doc/build
+build
+dist
+MANIFEST
