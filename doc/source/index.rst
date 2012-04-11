@@ -141,12 +141,15 @@ The stack may be cleared if, for example, the document is saved.
    
    >>> add(seq, 4)
    
+   
 .. doctest::
+
    >>> stack().canundo()
    True
    >>> stack().clear()
    >>> stack().canundo()
    False
+
 
 It is also possible to record a savepoint to check if there have been any
 changes.
@@ -167,9 +170,15 @@ changes.
 Groups
 ^^^^^^
 
-A series of actions may be grouped into a sngle action using the
+A series of actions may be grouped into a single action using the
 `group` context manager.
 
+.. doctest::
+    :hide:
+    
+    >>> stack().clear()
+    
+    
 .. doctest::
 
    >>> seq = []
