@@ -17,14 +17,10 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
+__version__ = '0.5.0'
+__author__ = 'David Townshend'
 
-# Implementation Notes
-# ^^^^^^^^^^^^^^^^^^^^
-
-# The roles of an _Action are normally set using the :func:`undoable` 
-# function as a decorator on the *do* function. This returns an
-# :class:`_ActionFactory` instance. :func:`_ActionFactory.undo` can
-# also be used as a decorator on the *undo* function.
+__all__ = ['undoable', 'group', 'Stack', 'stack', 'setstack']
 
 import contextlib
 
