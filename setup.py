@@ -47,6 +47,7 @@ def run_setup(*argv):
           author=author,
           author_email='aquavitae69@gmail.com',
           url='http://bitbucket.org/aquavitae/undo',
+          download_url='http://bitbucket.org/aquavitae/undo',
           py_modules=['undo'],
           classifiers=classifiers
          )
