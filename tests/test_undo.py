@@ -18,29 +18,41 @@
 
 from collections import deque
 
-from dtlibs import undo
-from dtlibs.mock import saver, Object
+import undo
 
 class TestCase:
 
     def setup(self):
-        pass
-
-    def teardown(self):
-        undo.stack().__init__()
-        saver.restore()
+        undo.setstack(undo.Stack())
 
 
-class TestUndoable(TestCase):
+class TestSetStack():
+    'Test setting and calling the current stack'
+
+    def test_init_stack(self):
+        'Test that a new stack is created'
+        undo._stack = None
+        stack = undo.stack()
+        assert stack is undo._stack
+        assert isinstance(stack, undo.Stack)
+
+    def test_setstack(self):
+        'Test that a new stack can be set'
+        old = undo.stack()
+        new = undo.Stack()
+        undo.setstack(new)
+        stack = undo.stack()
+        assert stack is new
+        assert stack is not old
+
+
+class TestUndoable:
     'Test undoble as a generator.'
 
     def setup(self):
-        #Mock undo.stack() to return a list, stored as self.stack
+        #Set undo.stack() to a list, stored as self.stack
         self.stack = []
-        saver(undo, 'stack')
-        mock_stack = lambda: self.stack
-        undo.stack = mock_stack
-        super().setup()
+        undo.setstack(self.stack)
 
     def test_function(self):
         'undoable should create a generator action with no arguments.'
@@ -167,8 +179,12 @@ class TestStack(TestCase):
 
     def setup(self):
         # Create a mock action for use in tests
-        self.action = Object('do', 'undo', 'text')
-        self.action.text = lambda: 'blah'
+        class Action:
+            def do(self): pass
+            def undo(self): pass
+            def text(self):
+                return 'blah'
+        self.action = Action()
         super().setup()
 
     def test_singleton(self):

@@ -28,7 +28,6 @@
 
 import contextlib
 
-from dtlibs import core
 from collections import deque
 
 class _Action:
@@ -150,11 +149,9 @@ def group(desc):
     return _Group(desc)
 
 
-class stack(metaclass=core.singleton()):
+class Stack:
     ''' The main undo stack. 
-    
-    This is a singleton, so the smae object is always returned by ``stack()``.
-    
+        
     The two key features are the :func:`redo` and :func:`undo` methods. If an 
     exception occurs during doing or undoing a undoable, the undoable
     aborts and the stack is cleared to avoid any further data corruption. 
@@ -180,10 +177,9 @@ class stack(metaclass=core.singleton()):
     >>> stack().redo()
     Can now undo: Undo An action
     
-    Setting them back to `dtlibs.core.none` will stop any 
-    further actions.
+    Setting them back to ``lambda: None`` will stop any further actions.
     
-    >>> stack().docallback = stack().undocallback = core.none
+    >>> stack().docallback = stack().undocallback = lambda: None
     >>> action()
     >>> stack().undo()
     
@@ -207,8 +203,8 @@ class stack(metaclass=core.singleton()):
         self._redos = deque()
         self._receiver = self._undos
         self._savepoint = None
-        self.undocallback = core.none
-        self.docallback = core.none
+        self.undocallback = lambda: None
+        self.docallback = lambda: None
 
     def canundo(self):
         ''' Return *True* if undos are available '''
@@ -313,3 +309,21 @@ class stack(metaclass=core.singleton()):
         This will always return *True* if the savepoint has not been set.
         '''
         return self._savepoint is None or self._savepoint != self.undocount()
+
+
+_stack = None
+
+def stack():
+    ''' Return the currently used stack.
+    
+    If no stack has been set, a new one is created and set.
+    '''
+    global _stack
+    if _stack is None:
+        _stack = Stack()
+    return _stack
+
+def setstack(stack):
+    ''' Set the undo stack to a specific `Stack` object.'''
+    global _stack
+    _stack = stack
