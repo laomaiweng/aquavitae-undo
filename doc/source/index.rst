@@ -1,12 +1,12 @@
-.. module:: dtlibs.undo
+.. module:: undo
 
 .. testsetup::
 
-   from dtlibs.undo import *
+   from undo import *
    
    
-dtlibs.undo
-===========
+undo
+====
 
 This is an undo/redo framework based on a functional approach which uses
 a undoable stack to track actions.  Actions are the result of a function
@@ -137,7 +137,11 @@ Clearing the stack
 The stack may be cleared if, for example, the document is saved.
 
 .. doctest::
+   :hide:
    
+   >>> add(seq, 4)
+   
+.. doctest::
    >>> stack().canundo()
    True
    >>> stack().clear()
@@ -187,7 +191,7 @@ Advanced Usage
 Actions can be created in a variety of ways.  All that is required is that
 an action which has occurred has *do*, *undo* and *text* methods, none of
 which accept any arguments.  The action must also be added to the stack
-manually using `stack.append`.  The simplest way of creating custom
+manually using `Stack.append`.  The simplest way of creating custom
 actions is to create a class which provides these methods and adds
 itself to the stack when created.
 
@@ -212,7 +216,7 @@ Members
 
     Return a context manager for grouping undoable actions.  All actions 
     which occur within the group will be undone by a single call of 
-    `stack.undo`, e.g.
+    `Stack.undo`, e.g.
     
         >>> @undoable
         ... def operation(n):
@@ -230,10 +234,21 @@ Members
         0
  
  
-.. class:: stack
+.. function:: stack
+
+    Returns the currently set `Stack` instance.  If no stack has been set
+    then a new instance is created and set.
     
-    The main undo stack.  This is a singleton, so the same object is always 
-    returned by ``stack()``.
+
+.. function:: setstack(stack)
+
+    Set the `Stack` instance to use as the undo stack.
+    
+    
+.. class:: Stack
+    
+    An undo stack.  `stack` can usually be called instead of creating an 
+    instance iof this diectly.
     
     The two key features are the `redo` and `undo` methods. If an 
     exception occurs during doing or undoing a undoable, the undoable
@@ -260,10 +275,9 @@ Members
         >>> stack().redo()
         Can now undo: Undo An action
     
-    Setting them back to `dtlibs.core.none` will stop any 
-    further actions.
+    Setting them back to ``lambda: None`` will stop any further actions.
     
-        >>> stack().docallback = stack().undocallback = core.none
+        >>> stack().docallback = stack().undocallback = lambda: None
         >>> action()
         >>> stack().undo()
     
