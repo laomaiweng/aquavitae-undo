@@ -54,7 +54,7 @@ master_doc = 'index'
 
 
 # General information about the project.
-project = 'dtlibs'
+project = 'undo'
 
 copyright = '2011, David Townshend'
 
@@ -64,8 +64,8 @@ copyright = '2011, David Townshend'
 # built documents.
 
 # The full version, including alpha/beta/rc tags.
-import dtlibs
-release = dtlibs.__version__
+import undo
+release = undo.__version__
 # The short X.Y version.
 version = release.rsplit('.', 1)[0]
 
@@ -184,7 +184,7 @@ html_static_path = ['_static']
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'dtlibs-doc'
+htmlhelp_basename = 'undo-doc'
 
 
 # -- Options for LaTeX output --------------------------------------------------
@@ -199,7 +199,7 @@ latex_font_size = '10pt'
 
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
-latex_documents = [('index', 'dtlibs-doc.tex', 'dtlibs-doc Documentation', 'David Townshend', 'manual')]
+latex_documents = [('index', 'undo-doc.tex', 'undo-doc Documentation', 'David Townshend', 'manual')]
 
 
 # A dictionary that contains LaTeX snippets that override those Sphinx usually 
@@ -236,7 +236,7 @@ latex_use_parts = False
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [('index', 'dtlibs-doc', 'dtlibs-doc Documentation', ['David Townshend'], 1)]
+man_pages = [('index', 'undo-doc', 'undo-doc Documentation', ['David Townshend'], 1)]
 
 
 # -- Additional options --------------------------------------------------------
