@@ -17,7 +17,7 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 675 Mass Ave, Cambridge, MA 02139, USA.
 
-__version__ = '0.5.0'
+__version__ = '0.5.1'
 __author__ = 'David Townshend'
 
 __all__ = ['undoable', 'group', 'Stack', 'stack', 'setstack']
