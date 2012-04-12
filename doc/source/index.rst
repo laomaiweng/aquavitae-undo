@@ -19,9 +19,17 @@ or undone.
 Installation
 ------------
 
-**undo** can be downloaded from `http://bitbucket.org/aquavitae/undo`
-and installed using ``python setup.py install``.  It has been tested
-with Python 2.7 and Python 3.2, and has no extra dependencies.
+**undo** can be installed using pip: ``pip install undo``, or downloaded
+from `<http://bitbucket.org/aquavitae/undo>`_ and installed using
+``python setup.py install``.  It has been tested with Python 2.7 and
+Python 3.2, and has no extra dependencies.
+
+
+Bug Reporting
+-------------
+
+Bug reports and feature requests can be made on the
+`issue tracker <http://bitbucket.org/aquavitae/undo/issues>`_.
 
 
 Basic Usage
