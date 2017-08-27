@@ -93,6 +93,45 @@ def undoable(generator):
     return inner
 
 
+def groupundoable(generator):
+    ''' Decorator which creates a new undoable group of actions.
+    
+    This decorator should be used on a generator of the following format:
+    
+        @groupundoable
+        def operation(*args, **kwargs):
+            first_action
+            second_action
+            return ('descriptive text', return_value)
+    
+    (The return value is optional.)
+    
+    This is merely syntactic sugar to make functions using group() stand out as
+    undoable thanks to the decorator. It is strictly equivalent to:
+    
+        def operation(*args, **kwargs):
+            with group('descriptive text'):
+                first_undoable_action
+                second_undoable_action
+            return return_value
+    '''
+    def inner(*args, **kwargs):
+        # We'll set the description later, from the return value of the
+        # function. This way, the function can build the description from its
+        # arguments.
+        with group('') as _group:
+            rets = generator(*args, **kwargs)
+            if isinstance(rets, tuple):
+                _group._desc = rets[0]
+                return rets[1:]
+            elif rets is None:
+                return None
+            else:
+                _group._desc = rets
+                return None
+    return inner
+
+
 class _Group:
     ''' A undoable group context manager. '''
 
@@ -102,6 +141,7 @@ class _Group:
 
     def __enter__(self):
         stack().setreceiver(self._stack)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
