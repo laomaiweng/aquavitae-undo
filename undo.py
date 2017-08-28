@@ -146,7 +146,8 @@ class _Group:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             stack().resetreceiver()
-            stack().append(self)
+            if len(self._stack):
+                stack().append(self)
         return False
 
     def undo(self):
