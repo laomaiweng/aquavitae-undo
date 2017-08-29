@@ -145,12 +145,12 @@ class _Group:
         self._stack = []
 
     def __enter__(self):
-        stack().setreceiver(self._stack)
+        stack().pushreceiver(self._stack)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            stack().resetreceiver()
+            assert stack().popreceiver() == self._stack
             if len(self._stack):
                 stack().append(self)
         return False
@@ -243,7 +243,8 @@ class Stack:
     def __init__(self):
         self._undos = deque()
         self._redos = deque()
-        self._receiver = self._undos
+        self._receivers = deque()
+        self._receivers.append(self._undos)
         self._savepoint = None
         self.undocallback = lambda: None
         self.docallback = lambda: None
@@ -293,7 +294,8 @@ class Stack:
         self._undos.clear()
         self._redos.clear()
         self._savepoint = None
-        self._receiver = self._undos
+        self._receivers.clear()
+        self._receivers.append(self._undos)
 
     def undocount(self):
         ''' Return the number of undos available. '''
@@ -315,29 +317,32 @@ class Stack:
 
     @contextlib.contextmanager
     def _pausereceiver(self):
-        ''' Return a contect manager which temporarily pauses the receiver. '''
-        self.setreceiver([])
+        ''' Return a context manager which temporarily pauses the receiver. '''
+        self.pushreceiver([])
         yield
-        self.resetreceiver()
+        self.popreceiver()
 
-    def setreceiver(self, receiver=None):
-        ''' Set an object to receiver commands pushed onto the stack.
+    def pushreceiver(self, receiver):
+        ''' Push a receiver for commands pushed onto the stack.
         
-        By default it is the internal stack, but it can be set (usually
-        internally) to any object with an *append()* method.
+        The default receiver is the internal stack, but it can be overridden
+        (usually internally) to any object with an *append()* method.
         '''
         assert hasattr(receiver, 'append')
-        self._receiver = receiver
+        self._receivers.append(receiver)
 
-    def resetreceiver(self):
-        ''' Reset the receiver to the internal stack.'''
-        self._receiver = self._undos
+    def popreceiver(self):
+        ''' Pop the topmost receiver from the receiver stack. '''
+        receiver = self._receivers.pop()
+        # There should always be at least the internal stack
+        assert len(self._receivers)
+        return receiver
 
     def append(self, action):
-        ''' Add a undoable to the stack, using ``receiver.append()``. '''
-        if self._receiver is not None:
-            self._receiver.append(action)
-        if self._receiver is self._undos:
+        ''' Add an undoable to the stack, using ``receiver.append()``. '''
+        self._receivers[-1].append(action)
+        if len(self._receivers) == 1:
+            # The topmost receiver is the internal stack
             self._redos.clear()
             self.docallback()
 
