@@ -123,7 +123,12 @@ def groupundoable(generator):
             rets = generator(*args, **kwargs)
             if isinstance(rets, tuple):
                 _group._desc = rets[0]
-                return rets[1:]
+                ret = rets[1:]
+                if len(ret) == 1:
+                    return ret[0]
+                elif len(ret) == 0:
+                    return None
+                return ret
             elif rets is None:
                 return None
             else:
