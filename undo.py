@@ -149,10 +149,14 @@ class _Group:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        assert stack().popreceiver() == self._stack
         if exc_type is None:
-            assert stack().popreceiver() == self._stack
+            # No exception, append the group
             if len(self._stack):
                 stack().append(self)
+        else:
+            # Exception raised, undo stored actions
+            self.undo()
         return False
 
     def undo(self):
