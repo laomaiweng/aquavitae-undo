@@ -20,7 +20,7 @@
 __version__ = '0.5.1'
 __author__ = 'David Townshend'
 
-__all__ = ['undoable', 'groupundoable', 'group', 'Stack', 'stack', 'setstack']
+__all__ = ['undoable', 'groupundoable', 'autosave', 'group', 'Stack', 'stack', 'setstack']
 
 import contextlib
 
@@ -193,6 +193,17 @@ def group(desc):
     0
     '''
     return _Group(desc)
+
+
+def autosave(generator):
+    ''' Decorator which sets the savepoint after the generator returns.
+    Use prior to an @undoable or @groupundoable decorator.
+    '''
+    def inner(*args, **kwargs):
+        ret = generator(*args, **kwargs)
+        stack().savepoint()
+        return ret
+    return inner
 
 
 class Stack:
